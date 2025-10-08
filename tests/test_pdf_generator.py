@@ -33,6 +33,47 @@ class TestPdfGenerator(unittest.TestCase):
         cls.patient_info_positive = cls.positive_sample_group.iloc[0]
         cls.patient_info_negative = cls.negative_sample_group.iloc[0]
 
+        # --- Create custom data for edge cases ---
+        # 1. Sample with no valid results
+        no_valid_data = {
+            'Type': ['Patient'], 'ID': [99], 'Date collected': ['2023-01-25'],
+            'Name': ['No-Result Patient'], 'MR#': ['MRN999'], 'Date of Birth': ['01/01/1990'],
+            'Collected by': ['Tester'], 'Test completed': ['01/25/2023 12:00:00 PM'],
+            'Test Name': ['Test A'], 'Test result': ['Invalid'], 'Test units': ['ng/mL'],
+            'Flags': [''], 'Comment': ['']
+        }
+        cls.no_valid_results_group = pd.DataFrame(no_valid_data)
+
+        # 2. Sample with missing optional fields (Comment, Flags)
+        missing_optional_data = {
+            'Type': ['Patient'], 'ID': [98], 'Date collected': ['2023-01-26'],
+            'Name': ['Missing-Optional Patient'], 'MR#': ['MRN998'], 'Date of Birth': ['01/01/1990'],
+            'Collected by': ['Tester'], 'Test completed': ['01/26/2023 12:00:00 PM'],
+            'Test Name': ['Test B'], 'Test result': ['Positive'], 'Test units': ['ng/mL'],
+            'Flags': [None], 'Comment': [None]
+        }
+        cls.missing_optional_fields_group = pd.DataFrame(missing_optional_data)
+
+        # 3. Sample with case-insensitive results
+        case_insensitive_data = {
+            'Type': ['Patient'], 'ID': [97], 'Date collected': ['2023-01-27'],
+            'Name': ['Case-Sensitive Patient'], 'MR#': ['MRN997'], 'Date of Birth': ['01/01/1990'],
+            'Collected by': ['Tester'], 'Test completed': ['01/27/2023 12:00:00 PM'],
+            'Test Name': ['Test C'], 'Test result': ['positive'], 'Test units': ['ng/mL'],
+            'Flags': [''], 'Comment': ['']
+        }
+        cls.case_insensitive_group = pd.DataFrame(case_insensitive_data)
+
+        # 4. Sample with missing critical data (e.g., patient name)
+        missing_critical_data = {
+            'Type': ['Patient'], 'ID': [96], 'Date collected': ['2023-01-28'],
+            'Name': [None], 'MR#': ['MRN996'], 'Date of Birth': ['01/01/1990'],
+            'Collected by': ['Tester'], 'Test completed': ['01/28/2023 12:00:00 PM'],
+            'Test Name': ['Test D'], 'Test result': ['Negative'], 'Test units': ['ng/mL'],
+            'Flags': [''], 'Comment': ['']
+        }
+        cls.missing_critical_group = pd.DataFrame(missing_critical_data)
+
     def test_get_lab_header(self):
         """Test that the lab header is created correctly."""
         header = get_lab_header()
@@ -102,6 +143,69 @@ class TestPdfGenerator(unittest.TestCase):
             self.assertTrue(os.path.exists(output_filename))
         finally:
             # Clean up the created file
+            if os.path.exists(output_filename):
+                os.remove(output_filename)
+            if os.path.exists(output_dir):
+                os.rmdir(output_dir)
+
+    def test_sample_with_no_valid_results(self):
+        """Test that a report is still generated if a sample has no valid results."""
+        output_dir = 'tests/output_pdfs'
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, 'no_valid_results_report.pdf')
+
+        try:
+            generate_pdf_report(self.no_valid_results_group, output_filename)
+            self.assertTrue(os.path.exists(output_filename))
+            # The results table should be empty, so we can check the story length or content
+        finally:
+            if os.path.exists(output_filename):
+                os.remove(output_filename)
+            if os.path.exists(output_dir):
+                os.rmdir(output_dir)
+
+    def test_missing_optional_fields(self):
+        """Test PDF generation when optional fields like 'Comment' and 'Flags' are missing."""
+        output_dir = 'tests/output_pdfs'
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, 'missing_optional_fields_report.pdf')
+
+        try:
+            generate_pdf_report(self.missing_optional_fields_group, output_filename)
+            self.assertTrue(os.path.exists(output_filename))
+        finally:
+            if os.path.exists(output_filename):
+                os.remove(output_filename)
+            if os.path.exists(output_dir):
+                os.rmdir(output_dir)
+
+    def test_case_insensitive_results_handling(self):
+        """Test that 'positive' (lowercase) is handled correctly."""
+        output_dir = 'tests/output_pdfs'
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, 'case_insensitive_report.pdf')
+
+        try:
+            # This should generate a note because of the 'positive' result.
+            generate_pdf_report(self.case_insensitive_group, output_filename)
+            self.assertTrue(os.path.exists(output_filename))
+        finally:
+            if os.path.exists(output_filename):
+                os.remove(output_filename)
+            if os.path.exists(output_dir):
+                os.rmdir(output_dir)
+
+    def test_missing_critical_data_handling(self):
+        """Test that missing critical data (e.g., patient name) is handled without crashing."""
+        output_dir = 'tests/output_pdfs'
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, 'missing_critical_data_report.pdf')
+
+        try:
+            # The function should still run, but the name field in the PDF would be empty
+            generate_pdf_report(self.missing_critical_group, output_filename)
+            self.assertTrue(os.path.exists(output_filename))
+        finally:
             if os.path.exists(output_filename):
                 os.remove(output_filename)
             if os.path.exists(output_dir):
