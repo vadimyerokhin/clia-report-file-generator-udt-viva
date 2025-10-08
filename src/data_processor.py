@@ -1,15 +1,28 @@
+"""This module handles the loading and processing of laboratory data from CSV files.
+
+It includes functions to read CSV data, validate necessary columns, filter for
+patient-specific records, and group the data by unique patient samples for
+further processing.
+"""
 import pandas as pd
 
 def load_and_process_data(file_path):
-    """
-    Reads the input CSV file, filters for patient data, and groups it by unique sample.
+    """Reads, filters, and groups patient data from a CSV file.
+
+    This function performs the initial data ingestion and preparation. It reads a
+    CSV file, validates that it contains the required columns for processing,
+    filters the data to include only rows corresponding to patient samples, and
+    then groups the data by a composite key of sample ID and collection date.
+    Error handling is included for missing files, empty files, or parsing errors.
 
     Args:
         file_path (str): The path to the input CSV file.
 
     Returns:
-        pandas.core.groupby.generic.DataFrameGroupBy: A pandas DataFrameGroupBy object
-        containing the data grouped by unique patient samples, or None on error.
+        pandas.core.groupby.generic.DataFrameGroupBy: A pandas DataFrameGroupBy
+        object containing the data grouped by unique patient samples (by 'ID'
+        and 'Date collected'). Returns None if the file is not found, is empty,
+        is missing required columns, or a parsing error occurs.
     """
     # Step 1: Read the Input Data
     try:

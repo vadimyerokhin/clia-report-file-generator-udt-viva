@@ -1,3 +1,10 @@
+"""This module is responsible for generating PDF reports from processed data.
+
+It uses the reportlab library to construct a PDF document containing a laboratory
+report for a single patient sample. The module defines functions to create
+various components of the report, such as headers, footers, patient information
+tables, and test result tables.
+"""
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -8,12 +15,18 @@ import pandas as pd
 from datetime import datetime
 
 def generate_pdf_report(sample_group, output_filename):
-    """
-    Generates a PDF report for a single patient sample.
+    """Generates and saves a complete PDF report for a single patient sample.
+
+    This function orchestrates the creation of a PDF document by assembling
+    various components (header, title, info tables, results, footer). It takes a
+    DataFrame group corresponding to a single sample and saves the generated
+    PDF to the specified file.
 
     Args:
-        sample_group (pd.DataFrame): DataFrame containing all rows for a single patient sample.
-        output_filename (str): The path to save the generated PDF file.
+        sample_group (pd.DataFrame): A DataFrame containing all data rows for a
+            single, unique patient sample.
+        output_filename (str): The path (including filename) where the
+            generated PDF report will be saved.
     """
     doc = SimpleDocTemplate(output_filename, pagesize=letter,
                             rightMargin=inch, leftMargin=inch,
@@ -52,7 +65,15 @@ def generate_pdf_report(sample_group, output_filename):
 
 
 def get_footer():
-    """Returns a list of flowables for the report footer."""
+    """Creates and returns the footer section of the report.
+
+    The footer contains information regarding the interpretation of test results,
+    including definitions for 'Negative' and 'Positive' results, and a
+    disclaimer note.
+
+    Returns:
+        list: A list of ReportLab Flowables representing the formatted footer.
+    """
     styles = getSampleStyleSheet()
     footer_header_style = ParagraphStyle('footer_header', parent=styles['h2'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_LEFT)
     footer_text_style = ParagraphStyle('footer_text', parent=styles['Normal'], fontName='Helvetica', fontSize=10, leading=12)
@@ -71,7 +92,15 @@ def get_footer():
 
 
 def get_lab_header():
-    """Returns the laboratory header component."""
+    """Creates and returns the main header for the laboratory report.
+
+    The header includes the laboratory's name, CLIA ID, address, contact
+    information, and the name of the laboratory director, followed by a
+    horizontal line.
+
+    Returns:
+        list: A list of ReportLab Flowables representing the formatted header.
+    """
     styles = getSampleStyleSheet()
     header_text = "Therapeutic Life Choices, LLC | CLIA ID: 37D2301589 | 1728 S Carson Ave | Tulsa, OK 74119 | p. (918) 917-4321 | e. drvadim@abraxaslabs.org | Laboratory Director: Vadim Yerokhin, PhD"
     header_style = ParagraphStyle('header_style', parent=styles['Normal'], fontSize=8, alignment=TA_LEFT)
@@ -83,14 +112,34 @@ def get_lab_header():
 
 
 def get_report_title():
-    """Returns the report title component."""
+    """Creates and returns the main title of the report.
+
+    Returns:
+        reportlab.platypus.Paragraph: A styled paragraph object for the title.
+    """
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('title_style', parent=styles['h1'], fontSize=14, alignment=TA_CENTER, fontName='Helvetica-Bold')
     title = Paragraph("urine drug test results", title_style)
     return title
 
 def get_info_tables(patient_info, sample_group):
-    """Creates and returns the formatted patient and specimen information blocks."""
+    """Creates the patient and specimen information tables.
+
+    This function constructs two formatted tables: one for patient demographics
+    (Name, DOB, MRN) and one for specimen details (Type, ID, Collection Date,
+    etc.).
+
+    Args:
+        patient_info (pd.Series): A pandas Series containing the demographic
+            information for the patient. It's expected to be the first row
+            of the sample group.
+        sample_group (pd.DataFrame): The DataFrame for the entire sample, used
+            to derive the 'Test Completed Date'.
+
+    Returns:
+        list: A list of ReportLab Flowables, including headers and tables for
+            patient and specimen information.
+    """
     styles = getSampleStyleSheet()
     # Base styles
     patient_style = ParagraphStyle('patient_style', parent=styles['Normal'], fontName='Helvetica', fontSize=10)
@@ -131,14 +180,30 @@ def get_info_tables(patient_info, sample_group):
     return [patient_header, patient_table, Spacer(1, 0.2*inch), specimen_header, specimen_table]
 
 def get_conditional_note():
-    """Returns the conditional note for positive results."""
+    """Creates a small, italicized note for reports with positive results.
+
+    Returns:
+        reportlab.platypus.Paragraph: A styled paragraph object for the note.
+    """
     styles = getSampleStyleSheet()
     note_style = ParagraphStyle('note_style', parent=styles['Normal'], fontName='Helvetica-Oblique', fontSize=10)
     note = Paragraph("*note: this sample contains a positive result*", note_style)
     return note
 
 def get_results_table(sample_group):
-    """Creates and returns the test results table."""
+    """Creates and formats the main table of test results.
+
+    This function takes the patient sample data and formats it into a structured
+    table, including a header row and all test results for that sample.
+
+    Args:
+        sample_group (pd.DataFrame): A DataFrame containing all test results
+            for a single patient sample.
+
+    Returns:
+        list: A list of ReportLab Flowables containing the table header and the
+            formatted table.
+    """
     header = [Paragraph("<b>Test Name</b>"), Paragraph("<b>Result</b>"), Paragraph("<b>Units</b>"), Paragraph("<b>Flags</b>"), Paragraph("<b>COMMENTS</b>")]
 
     # Prepare data, ensuring all values are strings
