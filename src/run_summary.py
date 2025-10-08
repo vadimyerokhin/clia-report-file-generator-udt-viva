@@ -18,6 +18,7 @@ class RunSummary:
         self._output_dir = ""
         self._skipped_samples = []
         self._invalid_results = defaultdict(list)
+        self._positive_results = []
         self._errors = []
         self.output_stream = sys.stdout
 
@@ -51,6 +52,15 @@ class RunSummary:
     def log_invalid_result(self, mrn, test_name, result):
         """Logs a test result that was filtered out as invalid."""
         self._invalid_results[mrn].append(f"{test_name}: '{result}'")
+
+    def log_positive_result(self, mrn, patient_name, test_name, collection_date):
+        """Logs a positive test result for the summary report."""
+        self._positive_results.append({
+            "mrn": mrn,
+            "patient_name": patient_name,
+            "test_name": test_name,
+            "collection_date": collection_date
+        })
 
     def log_error(self, identifier, message):
         """Logs a generic error encountered during processing."""

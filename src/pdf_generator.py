@@ -9,12 +9,13 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.colors import black, lightgrey
+from reportlab.lib.colors import black, lightgrey, grey
 from reportlab.lib.units import inch
 import pandas as pd
 from datetime import datetime
+import os
 
-def generate_pdf_report(sample_group, output_filename, summary, completed_date):
+def generate_pdf_report(sample_group, output_filename, summary, completed_date, input_filename=""):
     """Generates and saves a complete PDF report for a single patient sample.
 
     This function orchestrates the creation of a PDF document by assembling
@@ -30,6 +31,7 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date):
         summary (RunSummary): An instance of the RunSummary class for logging.
         completed_date (str): The pre-formatted 'Test Completed Date' for the
             report.
+        input_filename (str): The name of the input CSV file.
     """
     doc = SimpleDocTemplate(output_filename, pagesize=letter,
                             rightMargin=inch, leftMargin=inch,
@@ -63,14 +65,24 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date):
     story.append(Spacer(1, 0.2 * inch))
 
     # --- 3. Patient and Specimen Info ---
-    story.extend(get_info_tables(patient_info, summary, completed_date))
+    story.extend(get_info_tables(patient_info, summary, completed_date, input_filename))
     story.append(Spacer(1, 0.2 * inch))
 
-    # --- 4. Conditional Positive Note ---
-    # Check for positive results in the VALID data (case-insensitive)
-    if valid_results_df['Test result'].str.strip().str.lower().eq('positive').any():
+    # --- 4. Conditional Positive Note & Log Positives ---
+    positive_mask = valid_results_df['Test result'].str.strip().str.lower() == 'positive'
+    positive_results = valid_results_df[positive_mask]
+
+    if not positive_results.empty:
         story.append(get_conditional_note())
         story.append(Spacer(1, 0.1 * inch))
+        # Log each positive result for the summary report
+        for _, row in positive_results.iterrows():
+            summary.log_positive_result(
+                mrn=mrn,
+                patient_name=patient_info['Name'],
+                test_name=row['Test Name'],
+                collection_date=patient_info['Date collected']
+            )
 
     # --- 5. Test Results Table ---
     # Generate the table using ONLY the valid results, if any exist
@@ -142,7 +154,7 @@ def get_report_title():
     title = Paragraph("urine drug test results", title_style)
     return title
 
-def get_info_tables(patient_info, summary, completed_date):
+def get_info_tables(patient_info, summary, completed_date, input_filename=""):
     """Creates the patient and specimen information tables.
 
     This function constructs two formatted tables: one for patient demographics
@@ -156,6 +168,8 @@ def get_info_tables(patient_info, summary, completed_date):
         summary (RunSummary): An instance of the RunSummary class for logging.
         completed_date (str): The pre-formatted 'Test Completed Date' to be
             displayed in the specimen information table.
+        input_filename (str, optional): The name of the source CSV file.
+            Defaults to "".
 
     Returns:
         list: A list of ReportLab Flowables, including headers and tables for
@@ -193,9 +207,16 @@ def get_info_tables(patient_info, summary, completed_date):
     collection_date = str(patient_info['Date collected']) if pd.notna(patient_info['Date collected']) else ''
     collected_by = str(patient_info['Collected by']) if pd.notna(patient_info['Collected by']) else ''
 
+    # Combine Specimen ID with the input filename in fine print
+    if input_filename:
+        specimen_id_text = f"{specimen_id}  <font size='8' color='grey'><i>(Source: {os.path.basename(input_filename)})</i></font>"
+    else:
+        specimen_id_text = specimen_id
+    specimen_id_paragraph = Paragraph(specimen_id_text, patient_style)
+
     specimen_data = [
         [Paragraph("Specimen Type:", patient_bold_style), Paragraph("Urine", patient_style)],
-        [Paragraph("Specimen ID:", patient_bold_style), Paragraph(specimen_id, patient_style)],
+        [Paragraph("Specimen ID:", patient_bold_style), specimen_id_paragraph],
         [Paragraph("Collection Date:", patient_bold_style), Paragraph(collection_date, patient_style)],
         [Paragraph("Collected By:", patient_bold_style), Paragraph(collected_by, patient_style)],
         [Paragraph("Test Completed Date:", patient_bold_style), Paragraph(completed_date, patient_style)],
@@ -305,3 +326,67 @@ if __name__ == '__main__':  # pragma: no cover
             print(f"    ...saved to {output_filename}")
 
         print("Test PDF generation complete.")
+
+
+def generate_positives_summary_pdf(summary, output_dir):
+    """Generates a summary PDF of all positive results from the run.
+
+    Args:
+        summary (RunSummary): The summary object containing the collected positive results.
+        output_dir (str): The directory to save the summary PDF in.
+    """
+    if not summary._positive_results:
+        return  # No positive results to report
+
+    output_filename = os.path.join(output_dir, "positives_summary.pdf")
+    doc = SimpleDocTemplate(output_filename, pagesize=letter,
+                            rightMargin=inch, leftMargin=inch,
+                            topMargin=inch, bottomMargin=inch)
+    story = []
+    styles = getSampleStyleSheet()
+
+    # --- Title ---
+    title_style = ParagraphStyle('title_style', parent=styles['h1'], fontSize=14, alignment=TA_CENTER, fontName='Helvetica-Bold')
+    title = Paragraph("Summary of Positive Results", title_style)
+    story.append(title)
+    story.append(Spacer(1, 0.2 * inch))
+
+    # --- Introduction ---
+    intro_text = f"This report summarizes all <b>{len(summary._positive_results)}</b> positive results detected during the run."
+    intro_style = ParagraphStyle('intro_style', parent=styles['Normal'], alignment=TA_LEFT)
+    story.append(Paragraph(intro_text, intro_style))
+    story.append(Spacer(1, 0.2 * inch))
+
+    # --- Results Table ---
+    header = [
+        Paragraph("<b>Patient Name</b>"),
+        Paragraph("<b>MRN</b>"),
+        Paragraph("<b>Collection Date</b>"),
+        Paragraph("<b>Positive Test</b>")
+    ]
+    data = [header]
+
+    # Sort results for consistency
+    sorted_positives = sorted(summary._positive_results, key=lambda x: (x['patient_name'], x['mrn'], x['collection_date']))
+
+    for result in sorted_positives:
+        data.append([
+            str(result['patient_name']),
+            str(result['mrn']),
+            str(result['collection_date']),
+            str(result['test_name'])
+        ])
+
+    table = Table(data, colWidths=[2.0*inch, 1.5*inch, 1.5*inch, 1.5*inch], repeatRows=1)
+    style = TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), lightgrey),
+        ('TEXTCOLOR', (0,0), (-1,0), black),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('GRID', (0,0), (-1,-1), 1, black)
+    ])
+    table.setStyle(style)
+    story.append(table)
+
+    doc.build(story)
