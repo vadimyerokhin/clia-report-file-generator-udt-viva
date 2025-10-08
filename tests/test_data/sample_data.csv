@@ -1,0 +1,8 @@
+ID,Date collected,Name,Date of Birth,MR#,Type,Collected by,Test completed,Test Name,Test result,Test units,Flags,Comment
+1,2023-01-15,John Doe,1990-05-20,MRN001,Patient,Nurse Joy,01/15/2023 02:30:00 PM,Opiates,Negative,ng/mL,,
+1,2023-01-15,John Doe,1990-05-20,MRN001,Patient,Nurse Joy,01/15/2023 02:30:00 PM,Cocaine,Positive,ng/mL,H,
+2,2023-01-16,Jane Smith,1985-11-12,MRN002,Patient,Dr. Feelgood,01/16/2023 03:00:00 PM,Amphetamines,Negative,ng/mL,,
+3,2023-01-17,Peter Jones,2000-01-01,MRN003,Control,,01/17/2023 04:00:00 PM,Opiates,Negative,ng/mL,,
+1,2023-01-15,John Doe,1990-05-20,MRN001,Patient,Nurse Joy,01/15/2023 02:30:00 PM,THC,Negative,ng/mL,,"Sample slightly diluted."
+4,2023-01-18,Mary Brown,1992-03-14,MRN004,Patient,Nurse Joy,01/18/2023 05:00:00 PM,Opiates,Negative,ng/mL,,
+5,2023-01-19,Test Patient,,MRN005,Patient,Dr. Feelgood,01/19/2023 06:00:00 PM,Cocaine,Negative,ng/mL,,

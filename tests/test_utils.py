@@ -1,5 +1,5 @@
 import unittest
-from utils import sanitize_filename
+from src.utils import sanitize_filename
 
 class TestSanitizeFilename(unittest.TestCase):
     def test_replaces_illegal_characters_and_spaces_with_hyphen(self):
