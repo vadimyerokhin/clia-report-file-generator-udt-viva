@@ -13,6 +13,7 @@ class TestDataProcessor(unittest.TestCase):
         self.malformed_csv_path = os.path.join(self.test_data_dir, 'malformed_data.csv')
         self.non_existent_csv_path = os.path.join(self.test_data_dir, 'no_such_file.csv')
         self.missing_column_csv_path = os.path.join(self.test_data_dir, 'missing_column.csv')
+        self.no_patient_data_csv_path = os.path.join(self.test_data_dir, 'no_patient_data.csv')
 
         # Create an empty file for testing
         with open(self.empty_csv_path, 'w') as f:
@@ -28,6 +29,11 @@ class TestDataProcessor(unittest.TestCase):
             f.write("Type,ID,Date collected,MR#\n")
             f.write("Patient,1,2023-01-15,MRN001\n")
 
+        # Create a file with no 'Patient' data to test the warning
+        with open(self.no_patient_data_csv_path, 'w') as f:
+            f.write("Type,ID,Date collected,Name,MR#,Date of Birth,Collected by,Test completed,Test Name,Test result\n")
+            f.write("Control,C1,2023-01-15,Control A,N/A,N/A,N/A,2023-01-15,QC,Passed\n")
+
     def tearDown(self):
         """Clean up after tests."""
         if os.path.exists(self.empty_csv_path):
@@ -36,6 +42,8 @@ class TestDataProcessor(unittest.TestCase):
             os.remove(self.malformed_csv_path)
         if os.path.exists(self.missing_column_csv_path):
             os.remove(self.missing_column_csv_path)
+        if os.path.exists(self.no_patient_data_csv_path):
+            os.remove(self.no_patient_data_csv_path)
 
     def test_load_and_process_data_success(self):
         """Test successful loading and processing of data."""
@@ -85,6 +93,12 @@ class TestDataProcessor(unittest.TestCase):
         """Test that a file with a missing required column returns None."""
         grouped_data = load_and_process_data(self.missing_column_csv_path)
         self.assertIsNone(grouped_data)
+
+    def test_no_patient_data_warning(self):
+        """Test that a warning is printed when no 'Patient' data is found."""
+        grouped_data = load_and_process_data(self.no_patient_data_csv_path)
+        self.assertIsNotNone(grouped_data)
+        self.assertEqual(len(grouped_data), 0)
 
 if __name__ == '__main__':
     unittest.main()

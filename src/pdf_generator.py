@@ -229,11 +229,11 @@ def get_results_table(sample_group):
     data = [header]
     for _, row in sample_group.iterrows():
         data.append([
-            row['Test Name'],
-            row['Test result'],
-            row['Test units'] if pd.notna(row['Test units']) else '',
-            row['Flags'] if pd.notna(row['Flags']) else '',
-            row['Comment'] if pd.notna(row['Comment']) else ''
+            str(row['Test Name']) if pd.notna(row['Test Name']) else '',
+            str(row['Test result']),
+            str(row['Test units']) if pd.notna(row['Test units']) else '',
+            str(row['Flags']) if pd.notna(row['Flags']) else '',
+            str(row['Comment']) if pd.notna(row['Comment']) else ''
         ])
 
     table = Table(data, colWidths=[2.5*inch, 1*inch, 1*inch, 1*inch, 1*inch], repeatRows=1)
@@ -259,7 +259,7 @@ def get_results_table(sample_group):
 
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     # This block is for testing the PDF generation directly.
     # We will need to load the data first.
     from data_processor import load_and_process_data
