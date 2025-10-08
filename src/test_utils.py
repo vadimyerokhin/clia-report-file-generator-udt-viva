@@ -23,5 +23,11 @@ class TestSanitizeFilename(unittest.TestCase):
         expected_name = 'Jane-Doe-More'
         self.assertEqual(sanitize_filename(name_with_multiple), expected_name)
 
+    def test_removes_leading_and_trailing_hyphens(self):
+        # Test case for leading/trailing illegal characters and spaces
+        invalid_name = '///Leading and Trailing///'
+        expected_name = 'Leading-and-Trailing'
+        self.assertEqual(sanitize_filename(invalid_name), expected_name)
+
 if __name__ == '__main__':
     unittest.main()

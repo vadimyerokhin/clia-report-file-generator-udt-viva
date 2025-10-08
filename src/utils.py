@@ -20,6 +20,9 @@ def sanitize_filename(filename):
     illegal_chars_and_spaces = r'[\\/:\*\?"<>\|\s]+'
     sanitized_filename = re.sub(illegal_chars_and_spaces, '-', filename)
 
+    # Remove leading/trailing hyphens that might have been created
+    sanitized_filename = sanitized_filename.strip('-')
+
     return sanitized_filename
 
 if __name__ == '__main__':
