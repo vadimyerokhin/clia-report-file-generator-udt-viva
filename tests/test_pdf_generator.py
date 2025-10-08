@@ -211,5 +211,28 @@ class TestPdfGenerator(unittest.TestCase):
             if os.path.exists(output_dir):
                 os.rmdir(output_dir)
 
+    def test_24_hour_timestamp_format_succeeds_after_fix(self):
+        """Test that PDF generation succeeds with a 24-hour timestamp after the fix."""
+        bug_csv_path = os.path.join(self.test_data_dir, 'bug_report_data.csv')
+        grouped_data = load_and_process_data(bug_csv_path)
+        self.assertIsNotNone(grouped_data, "Failed to load bug report test data.")
+
+        bug_sample_group = grouped_data.get_group(('BR001', '10/08/2025'))
+        output_dir = 'tests/output_pdfs'
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, 'bug_report_after_fix.pdf')
+
+        try:
+            # After the fix, this should run without raising a ValueError
+            generate_pdf_report(bug_sample_group, output_filename)
+            self.assertTrue(os.path.exists(output_filename), "PDF report should be generated successfully.")
+        finally:
+            # Clean up any file that might have been created
+            if os.path.exists(output_filename):
+                os.remove(output_filename)
+            if os.path.exists(output_dir):
+                os.rmdir(output_dir)
+
+
 if __name__ == '__main__':
     unittest.main()
