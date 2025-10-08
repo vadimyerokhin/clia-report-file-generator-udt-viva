@@ -41,7 +41,7 @@ def generate_pdf_report(sample_group, output_filename):
     valid_results_list = ['positive', 'negative']
     # Ensure 'Test result' column is string type to use .str accessor
     sample_group['Test result'] = sample_group['Test result'].astype(str)
-    valid_mask = sample_group['Test result'].str.lower().isin(valid_results_list)
+    valid_mask = sample_group['Test result'].str.strip().str.lower().isin(valid_results_list)
 
     valid_results_df = sample_group[valid_mask]
     invalid_results_df = sample_group[~valid_mask]
@@ -67,7 +67,7 @@ def generate_pdf_report(sample_group, output_filename):
 
     # --- 4. Conditional Positive Note ---
     # Check for positive results in the VALID data (case-insensitive)
-    if valid_results_df['Test result'].str.lower().eq('positive').any():
+    if valid_results_df['Test result'].str.strip().str.lower().eq('positive').any():
         story.append(get_conditional_note())
         story.append(Spacer(1, 0.1 * inch))
 
