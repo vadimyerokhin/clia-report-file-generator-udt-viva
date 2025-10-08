@@ -1,3 +1,9 @@
+"""This module serves as the main entry point for the application.
+
+It handles command-line argument parsing and orchestrates the entire process
+of reading data, processing it, and generating PDF reports. The main function
+drives the workflow from data input to report output.
+"""
 import os
 import argparse
 import pandas as pd
@@ -6,12 +12,19 @@ from pdf_generator import generate_pdf_report
 from utils import sanitize_filename
 
 def main(input_file, output_dir):
-    """
-    Main function to drive the PDF report generation process.
+    """Drives the PDF report generation process from start to finish.
+
+    This function takes a path to an input CSV file and an output directory.
+    It reads the data, processes and groups it by patient sample, and then
+    iterates through each group to generate a formatted PDF report, which is
+    saved in the specified output directory.
 
     Args:
-        input_file (str): Path to the input CSV file.
-        output_dir (str): Directory to save the generated PDF files.
+        input_file (str): The full path to the input CSV file containing the
+            laboratory test data.
+        output_dir (str): The path to the directory where the generated PDF
+            report files will be saved. The directory will be created if it
+            does not exist.
     """
     # Ensure the output directory exists
     if not os.path.exists(output_dir):
