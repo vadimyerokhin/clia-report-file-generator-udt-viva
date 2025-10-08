@@ -12,15 +12,16 @@ def load_and_process_data(file_path):
     This function performs the initial data ingestion and preparation. It reads a
     CSV file, validates that it contains the required columns for processing,
     filters the data to include only rows corresponding to patient samples, and
-    then groups the data by a composite key of sample ID and collection date.
-    Error handling is included for missing files, empty files, or parsing errors.
+    then groups the data by the patient's medical record number and sample
+    collection date. Error handling is included for missing files, empty files,
+    or parsing errors.
 
     Args:
         file_path (str): The path to the input CSV file.
 
     Returns:
         pandas.core.groupby.generic.DataFrameGroupBy: A pandas DataFrameGroupBy
-        object containing the data grouped by unique patient samples (by 'ID'
+        object containing the data grouped by unique patient samples (by 'MR#'
         and 'Date collected'). Returns None if the file is not found, is empty,
         is missing required columns, or a parsing error occurs.
     """
