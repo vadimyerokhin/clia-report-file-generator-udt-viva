@@ -6,36 +6,35 @@ further processing.
 """
 import pandas as pd
 
-def load_and_process_data(file_path):
+def load_and_process_data(file_path, summary):
     """Reads, filters, and groups patient data from a CSV file.
 
     This function performs the initial data ingestion and preparation. It reads a
     CSV file, validates that it contains the required columns for processing,
     filters the data to include only rows corresponding to patient samples, and
     then groups the data by the patient's medical record number and sample
-    collection date. Error handling is included for missing files, empty files,
-    or parsing errors.
+    collection date. Errors are logged to the provided summary object.
 
     Args:
         file_path (str): The path to the input CSV file.
+        summary (RunSummary): An instance of the RunSummary class for logging.
 
     Returns:
         pandas.core.groupby.generic.DataFrameGroupBy: A pandas DataFrameGroupBy
         object containing the data grouped by unique patient samples (by 'MR#'
-        and 'Date collected'). Returns None if the file is not found, is empty,
-        is missing required columns, or a parsing error occurs.
+        and 'Date collected'). Returns None if a critical error occurs.
     """
     # Step 1: Read the Input Data
     try:
         all_data = pd.read_csv(file_path)
         if all_data.empty:
-            print(f"Warning: The file at {file_path} is empty.")
+            summary.log_error(file_path, "The file is empty.")
             return None
     except FileNotFoundError:
-        print(f"Error: The file at {file_path} was not found.")
+        summary.log_error(file_path, "The file was not found.")
         return None
     except (pd.errors.EmptyDataError, pd.errors.ParserError) as e:
-        print(f"Error parsing CSV file {file_path}: {e}")
+        summary.log_error(file_path, f"Could not be parsed: {e}")
         return None
 
     # Step 2: Validate required columns
@@ -45,14 +44,17 @@ def load_and_process_data(file_path):
     ]
     missing_columns = [col for col in required_columns if col not in all_data.columns]
     if missing_columns:
-        print(f"Error: The file {file_path} is missing the following required columns: {', '.join(missing_columns)}")
+        summary.log_error(
+            file_path,
+            f"The file is missing required columns: {', '.join(missing_columns)}"
+        )
         return None
 
     # Step 3: Filter the data to include only 'Patient' type rows
     patient_data = all_data[all_data['Type'] == 'Patient'].copy()
 
     if patient_data.empty:
-        print(f"Warning: No 'Patient' data found in {file_path}.")
+        summary.log_error(file_path, "No data rows with Type='Patient' were found.")
 
     # Step 4: Group Data by Unique Patient Sample (MR# and Date collected)
     grouped_samples = patient_data.groupby(['MR#', 'Date collected'])

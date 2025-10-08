@@ -2,21 +2,25 @@ import os
 import sys
 import shutil
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from main import main
+from src.run_summary import RunSummary
 
 class TestMain(unittest.TestCase):
 
     def setUp(self):
         """Set up a temporary directory for test outputs."""
         self.output_dir = "temp_test_output"
-        # Ensure the directory is clean before each test
+        self.test_data_dir = "tests/test_data"
+        # Ensure the directories are clean before each test
         if os.path.exists(self.output_dir):
             shutil.rmtree(self.output_dir)
+        if not os.path.exists(self.test_data_dir):
+            os.makedirs(self.test_data_dir)
 
     def tearDown(self):
         """Remove the temporary directory after tests."""
@@ -46,14 +50,21 @@ class TestMain(unittest.TestCase):
         main(input_file, self.output_dir)
         self.assertTrue(os.path.exists(self.output_dir))
 
-    @patch('src.main.load_and_process_data', return_value=None)
+    @patch('main.load_and_process_data', return_value=None)
     def test_no_data_loaded(self, mock_load_data):
         """Test that the script exits gracefully if no data is loaded."""
-        input_file = "tests/test_data/empty_data.csv"
+        input_file = os.path.join(self.test_data_dir, "empty_data.csv")
+        with open(input_file, 'w') as f:
+            pass  # Create empty file
+
         main(input_file, self.output_dir)
-        # The directory is created, but should be empty.
+
         self.assertTrue(os.path.exists(self.output_dir))
         self.assertEqual(len(os.listdir(self.output_dir)), 0)
+        mock_load_data.assert_called_with(input_file, ANY)
+
+        if os.path.exists(input_file):
+            os.remove(input_file)
 
     @patch('builtins.input', side_effect=['a', '3', '1'])  # Invalid, out of range, then valid
     def test_invalid_user_input_for_conflict(self, mock_input):
@@ -65,38 +76,63 @@ class TestMain(unittest.TestCase):
         self.assertIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
         self.assertEqual(mock_input.call_count, 3)
 
-    @patch('builtins.input', side_effect=KeyboardInterrupt)
-    def test_user_cancellation_during_conflict(self, mock_input):
-        """Test that user cancellation (Ctrl+C) is handled gracefully."""
+    @patch('main.RunSummary')
+    @patch('builtins.input', side_effect=['s'])
+    def test_user_skipping_conflict(self, mock_input, mock_summary_class):
+        """Test that user can skip a conflict with 's'."""
+        mock_summary_instance = MagicMock()
+        mock_summary_class.return_value = mock_summary_instance
+
         input_file = "tests/test_data/conflict_data.csv"
         main(input_file, self.output_dir)
-        # The conflict patient should be skipped, but other reports generated
+
+        # The conflict patient should be skipped
         output_files = os.listdir(self.output_dir)
         self.assertEqual(len(output_files), 2)
         self.assertNotIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
 
-    def test_malformed_date_handling(self):
-        """Test that a malformed date does not crash the application."""
-        malformed_date_file = os.path.join("tests/test_data", "malformed_date_data.csv")
+        # Check that the skip was logged
+        mock_summary_instance.log_user_skip.assert_called_once_with('MRN006', '2023-01-20', ANY)
+
+    @patch('main.RunSummary')
+    def test_malformed_date_handling(self, mock_summary_class):
+        """Test that a malformed date does not crash the application and is logged."""
+        mock_summary_instance = MagicMock()
+        mock_summary_class.return_value = mock_summary_instance
+
+        malformed_date_file = os.path.join(self.test_data_dir, "malformed_date_data.csv")
         with open(malformed_date_file, 'w') as f:
             f.write("Type,ID,Date collected,Name,MR#,Date of Birth,Collected by,Test completed,Test Name,Test result,Test units,Flags,Comment\n")
             f.write("Patient,1,NOT-A-DATE,Bad Date Patient,MRN-DATE,01/01/1990,Collector,01/15/2023 12:00:00 PM,Test,Positive,ng/mL,,\n")
 
         try:
             main(malformed_date_file, self.output_dir)
-            expected_filename = "Bad-Date-Patient_MRN-DATE_NOT-A-DATE.pdf"
-            self.assertIn(expected_filename, os.listdir(self.output_dir))
+            # The file should NOT be created
+            self.assertEqual(len(os.listdir(self.output_dir)), 0)
+            # The error should be logged
+            mock_summary_instance.log_failure.assert_called_once_with(
+                "MR# MRN-DATE", "The date 'NOT-A-DATE' in the 'Date collected' column could not be parsed."
+            )
         finally:
             if os.path.exists(malformed_date_file):
                 os.remove(malformed_date_file)
 
+    @patch('main.RunSummary')
     @patch('main.generate_pdf_report', side_effect=Exception("PDF Generation Failed"))
-    def test_pdf_generation_error_handling(self, mock_generate_pdf):
+    def test_pdf_generation_error_handling(self, mock_generate_pdf, mock_summary_class):
         """Test that an error during PDF generation is caught and logged."""
+        mock_summary_instance = MagicMock()
+        mock_summary_class.return_value = mock_summary_instance
+
         input_file = "tests/test_data/sample_data.csv"
         main(input_file, self.output_dir)
-        # The error should be printed, but the process should complete for other files
-        self.assertEqual(mock_generate_pdf.call_count, 4)
+
+        # The error should be logged for each of the 4 samples
+        self.assertEqual(mock_summary_instance.log_failure.call_count, 4)
+        mock_summary_instance.log_failure.assert_any_call(
+            "MR# MRN001 / Sample 1", "Failed to generate PDF: PDF Generation Failed"
+        )
+
         # No files should be created because the mock always raises an exception
         self.assertEqual(len(os.listdir(self.output_dir)), 0)
 
