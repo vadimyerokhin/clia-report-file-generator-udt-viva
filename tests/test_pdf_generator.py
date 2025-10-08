@@ -2,6 +2,7 @@ import unittest
 import os
 import sys
 import pandas as pd
+import numpy as np
 from io import StringIO
 from unittest.mock import patch
 from reportlab.platypus import Paragraph, Table, Spacer
@@ -77,6 +78,18 @@ class TestPdfGenerator(unittest.TestCase):
             'Flags': [''], 'Comment': ['']
         }
         cls.missing_critical_group = pd.DataFrame(missing_critical_data)
+
+        # 5. Sample with NaN values in optional specimen fields
+        nan_specimen_data = {
+            'Type': ['Patient'], 'ID': [95], 'Date collected': [None],
+            'Name': ['NaN Specimen'], 'MR#': ['MRN995'], 'Date of Birth': ['01/01/1990'],
+            'Collected by': [np.nan], 'Test completed': ['01/29/2023 12:00:00 PM'],
+            'Test Name': ['Test E'], 'Test result': ['Negative'], 'Test units': ['ng/mL'],
+            'Flags': [''], 'Comment': ['']
+        }
+        cls.nan_specimen_group = pd.DataFrame(nan_specimen_data)
+        cls.patient_info_nan = cls.nan_specimen_group.iloc[0]
+
 
     def setUp(self):
         """Set up for each test case."""
@@ -257,6 +270,19 @@ class TestPdfGenerator(unittest.TestCase):
                 # so we check if it's empty first.
                 if os.path.exists(output_dir) and not os.listdir(output_dir):
                     os.rmdir(output_dir)
+
+    def test_nan_in_specimen_info_is_handled_gracefully(self):
+        """Test that NaN values in specimen info are converted to empty strings."""
+        completed_date = "01/29/2023"
+        info_tables = get_info_tables(self.patient_info_nan, self.summary, completed_date)
+
+        specimen_table = info_tables[4]
+        specimen_data = specimen_table._cellvalues
+
+        # Check 'Date collected' (was None), should now be an empty string
+        self.assertEqual(specimen_data[2][1].text, '')
+        # Check 'Collected by' (was np.nan), should now be an empty string
+        self.assertEqual(specimen_data[3][1].text, '')
 
 
 if __name__ == '__main__':

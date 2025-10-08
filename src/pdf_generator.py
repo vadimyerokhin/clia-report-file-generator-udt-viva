@@ -188,11 +188,16 @@ def get_info_tables(patient_info, summary, completed_date):
     # --- Specimen Information Block ---
     specimen_header = Paragraph("Specimen Information", info_header_style)
 
+    # Safely get specimen info, converting None or NaN to empty strings
+    specimen_id = str(patient_info['ID']) if pd.notna(patient_info['ID']) else ''
+    collection_date = str(patient_info['Date collected']) if pd.notna(patient_info['Date collected']) else ''
+    collected_by = str(patient_info['Collected by']) if pd.notna(patient_info['Collected by']) else ''
+
     specimen_data = [
         [Paragraph("Specimen Type:", patient_bold_style), Paragraph("Urine", patient_style)],
-        [Paragraph("Specimen ID:", patient_bold_style), Paragraph(str(patient_info['ID']), patient_style)],
-        [Paragraph("Collection Date:", patient_bold_style), Paragraph(patient_info['Date collected'], patient_style)],
-        [Paragraph("Collected By:", patient_bold_style), Paragraph(patient_info['Collected by'], patient_style)],
+        [Paragraph("Specimen ID:", patient_bold_style), Paragraph(specimen_id, patient_style)],
+        [Paragraph("Collection Date:", patient_bold_style), Paragraph(collection_date, patient_style)],
+        [Paragraph("Collected By:", patient_bold_style), Paragraph(collected_by, patient_style)],
         [Paragraph("Test Completed Date:", patient_bold_style), Paragraph(completed_date, patient_style)],
     ]
     specimen_table = Table(specimen_data, colWidths=[1.6*inch, 4.9*inch])
