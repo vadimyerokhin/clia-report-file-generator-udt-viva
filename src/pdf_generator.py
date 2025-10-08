@@ -167,9 +167,15 @@ def get_info_tables(patient_info, sample_group):
 
     # --- Patient Information Block ---
     patient_header = Paragraph("Patient Information", info_header_style)
+
+    # Safely get patient info, converting None or NaN to empty strings
+    name = str(patient_info['Name']) if pd.notna(patient_info['Name']) else ''
+    dob = str(patient_info['Date of Birth']) if pd.notna(patient_info['Date of Birth']) else ''
+    mrn = str(patient_info['MR#']) if pd.notna(patient_info['MR#']) else ''
+
     patient_data = [
         [Paragraph("Patient Name", patient_bold_style), Paragraph("DOB", patient_bold_style), Paragraph("Patient id", patient_bold_style)],
-        [Paragraph(patient_info['Name'], patient_style), Paragraph(patient_info['Date of Birth'], patient_style), Paragraph(patient_info['MR#'], patient_style)]
+        [Paragraph(name, patient_style), Paragraph(dob, patient_style), Paragraph(mrn, patient_style)]
     ]
     patient_table = Table(patient_data, colWidths=[2.16*inch, 2.16*inch, 2.16*inch])
     patient_table.setStyle(TableStyle([
