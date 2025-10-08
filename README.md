@@ -12,12 +12,13 @@ This project is a Python-based application designed to automate the generation o
 - **Result Filtering**: Automatically filters out and excludes any analyte results other than 'Positive' or 'Negative', printing a warning to the console for any excluded results.
 - **Dynamic PDF Generation**: Creates clean, professional, and easy-to-read PDF reports using the reportlab library.
 - **Filename Sanitization**: Generates safe and descriptive filenames for each report based on patient information.
-- **Command-Line Interface**: Easy to use from the terminal with arguments for input and output locations.
+- **Command-Line and GUI Interfaces**: Run the application from the terminal or through a user-friendly graphical interface.
 
 ## Requirements
 
 - Python 3.x
-- Dependencies listed in `requirements.txt` (pandas, reportlab, coverage)
+- Dependencies listed in `requirements.txt` (pandas, reportlab, PySide6).
+- The `coverage` package is also used for testing, but is not included in `requirements.txt`.
 
 ## Setup
 
@@ -37,7 +38,9 @@ This project is a Python-based application designed to automate the generation o
 
 ## Usage
 
-The application is run from the command line, requiring a path to the input CSV file and a path to the directory where the generated PDFs should be saved.
+### Command-Line Interface (CLI)
+
+The application can be run from the command line, requiring a path to the input CSV file and a path to the directory where the generated PDFs should be saved.
 
 **Command:**
 ```bash
@@ -52,6 +55,21 @@ python3 src/main.py -i data/Test_Data.csv -o output_reports
 ```
 The script will create the `output_reports` directory if it doesn't exist and populate it with PDF files named after each patient sample.
 
+### Graphical User Interface (GUI)
+
+For a more interactive experience, a graphical user interface is available.
+
+**Launch the GUI:**
+To run the GUI, execute the following command from the project root:
+```bash
+python3 run_gui.py
+```
+This will open a window allowing you to:
+- Browse for an input CSV file.
+- Select an output directory.
+- Choose how to organize the report subdirectories.
+- View a real-time log of the generation process.
+
 ## Project Structure
 
 ```
@@ -59,9 +77,11 @@ The script will create the `output_reports` directory if it doesn't exist and po
 ├── data/
 │   └── Test_Data.csv
 ├── src/
+│   ├── gui.py
 │   ├── main.py
 │   ├── data_processor.py
 │   ├── pdf_generator.py
+│   ├── run_summary.py
 │   └── utils.py
 ├── tests/
 │   ├── test_data/
@@ -70,6 +90,7 @@ The script will create the `output_reports` directory if it doesn't exist and po
 │   ├── test_pdf_generator.py
 │   ├── test_result_filtering.py
 │   └── test_utils.py
+├── run_gui.py
 └── requirements.txt
 ```
 
