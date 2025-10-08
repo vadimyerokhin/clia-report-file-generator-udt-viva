@@ -4,6 +4,7 @@ The RunSummary class provides a centralized way to track statistics, warnings,
 and errors throughout the application's execution. At the end of the process,
 it can generate a formatted, human-readable summary of the entire run.
 """
+import sys
 from collections import defaultdict
 
 class RunSummary:
@@ -18,6 +19,11 @@ class RunSummary:
         self._skipped_samples = []
         self._invalid_results = defaultdict(list)
         self._errors = []
+        self.output_stream = sys.stdout
+
+    def set_output_stream(self, stream):
+        """Sets the output stream for the summary printout."""
+        self.output_stream = stream
 
     def set_total_samples(self, count):
         """Sets the total number of unique patient samples found."""
@@ -52,38 +58,38 @@ class RunSummary:
 
 
     def print_summary(self):
-        """Prints the formatted run summary to the console."""
-        print("\n" + "-" * 40)
-        print("--- 📊 Automated Report Run Summary ---")
-        print("-" * 40)
+        """Prints the formatted run summary to the configured output stream."""
+        print("\n" + "-" * 40, file=self.output_stream)
+        print("--- 📊 Automated Report Run Summary ---", file=self.output_stream)
+        print("-" * 40, file=self.output_stream)
 
         # --- Successes ---
-        print("\n✅ Successes")
-        print(f"- Found {self._total_samples} unique patient samples.")
-        print(f"- {self._pdfs_generated} PDF reports successfully generated.")
+        print("\n✅ Successes", file=self.output_stream)
+        print(f"- Found {self._total_samples} unique patient samples.", file=self.output_stream)
+        print(f"- {self._pdfs_generated} PDF reports successfully generated.", file=self.output_stream)
         if self._output_dir:
-            print(f"- Reports saved to: {self._output_dir}")
+            print(f"- Reports saved to: {self._output_dir}", file=self.output_stream)
 
         # --- Warnings & Skipped Items ---
         if self._skipped_samples or self._invalid_results:
-            print("\n⚠️ Warnings & Skipped Items")
+            print("\n⚠️ Warnings & Skipped Items", file=self.output_stream)
             if self._skipped_samples:
-                print("- User skipped generating a report for the following samples:")
+                print("- User skipped generating a report for the following samples:", file=self.output_stream)
                 for item in self._skipped_samples:
-                    print(f"  - {item}")
+                    print(f"  - {item}", file=self.output_stream)
 
             if self._invalid_results:
-                print("- Invalid test results were found and excluded from the following reports:")
+                print("- Invalid test results were found and excluded from the following reports:", file=self.output_stream)
                 for mrn, results in self._invalid_results.items():
-                    print(f"  - Patient MR# {mrn}:")
+                    print(f"  - Patient MR# {mrn}:", file=self.output_stream)
                     for result_info in results:
-                        print(f"    - {result_info}")
+                        print(f"    - {result_info}", file=self.output_stream)
 
         # --- Errors ---
         if self._errors:
-            print("\n❌ Errors Encountered")
+            print("\n❌ Errors Encountered", file=self.output_stream)
             for error in self._errors:
-                print(f"- {error}")
+                print(f"- {error}", file=self.output_stream)
 
-        print("\n" + "-" * 40)
-        print("Process complete.")
+        print("\n" + "-" * 40, file=self.output_stream)
+        print("Process complete.", file=self.output_stream)
