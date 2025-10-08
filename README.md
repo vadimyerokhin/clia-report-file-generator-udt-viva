@@ -7,7 +7,9 @@ This project is a Python-based application designed to automate the generation o
 ## Features
 
 - **CSV Data Processing**: Reads and validates input data from a CSV file using the pandas library.
-- **Data Grouping**: Intelligently groups test results by unique patient sample identifiers.
+- **Intelligent Data Grouping**: Groups all tests for a patient by their Medical Record Number (`MR#`) and the `Date collected` to consolidate all results from a single visit into one report.
+- **Duplicate Sample Handling**: If multiple sample IDs are found for the same patient on the same day, the application prompts the user to select which sample to use, preventing ambiguity.
+- **Result Filtering**: Automatically filters out and excludes any analyte results other than 'Positive' or 'Negative', printing a warning to the console for any excluded results.
 - **Dynamic PDF Generation**: Creates clean, professional, and easy-to-read PDF reports using the reportlab library.
 - **Filename Sanitization**: Generates safe and descriptive filenames for each report based on patient information.
 - **Command-Line Interface**: Easy to use from the terminal with arguments for input and output locations.
@@ -15,7 +17,7 @@ This project is a Python-based application designed to automate the generation o
 ## Requirements
 
 - Python 3.x
-- Dependencies listed in `requirements.txt` (pandas, reportlab)
+- Dependencies listed in `requirements.txt` (pandas, reportlab, coverage)
 
 ## Setup
 
@@ -55,21 +57,40 @@ The script will create the `output_reports` directory if it doesn't exist and po
 ```
 .
 ├── data/
-│   └── Test_Data.csv       # Sample input data
+│   └── Test_Data.csv
 ├── src/
-│   ├── main.py             # Main script, handles CLI arguments
-│   ├── data_processor.py   # Handles loading and processing of CSV data
-│   ├── pdf_generator.py    # Handles the creation of the PDF report
-│   └── utils.py            # Utility functions (e.g., filename sanitization)
+│   ├── main.py
+│   ├── data_processor.py
+│   ├── pdf_generator.py
+│   └── utils.py
 ├── tests/
-│   └── ...                 # Unit tests for the application
-└── requirements.txt        # Project dependencies
+│   ├── test_data/
+│   ├── test_data_processor.py
+│   ├── test_main.py
+│   ├── test_pdf_generator.py
+│   ├── test_result_filtering.py
+│   └── test_utils.py
+└── requirements.txt
 ```
 
 ## Testing
 
-The project includes a suite of unit tests to ensure functionality and correctness. To run the tests, execute the following command from the project's root directory:
+The project includes a suite of unit tests to ensure functionality and correctness.
 
+### Running Tests
+
+To run the full test suite, execute the following command from the project's root directory:
 ```bash
 python3 -m unittest discover tests
 ```
+
+### Test Coverage
+
+This project uses the `coverage` library to measure test coverage.
+
+To run the tests with coverage and generate a report, use the following commands:
+```bash
+coverage run -m unittest discover tests
+coverage report -m
+```
+This will print a detailed coverage report to the console, showing the coverage for each source file.
