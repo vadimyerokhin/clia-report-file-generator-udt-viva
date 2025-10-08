@@ -14,7 +14,7 @@ from reportlab.lib.units import inch
 import pandas as pd
 from datetime import datetime
 
-def generate_pdf_report(sample_group, output_filename):
+def generate_pdf_report(sample_group, output_filename, summary):
     """Generates and saves a complete PDF report for a single patient sample.
 
     This function orchestrates the creation of a PDF document by assembling
@@ -27,6 +27,7 @@ def generate_pdf_report(sample_group, output_filename):
             single, unique patient sample.
         output_filename (str): The path (including filename) where the
             generated PDF report will be saved.
+        summary (RunSummary): An instance of the RunSummary class for logging.
     """
     doc = SimpleDocTemplate(output_filename, pagesize=letter,
                             rightMargin=inch, leftMargin=inch,
@@ -36,6 +37,7 @@ def generate_pdf_report(sample_group, output_filename):
 
     # Get consistent patient info from the first row of the group
     patient_info = sample_group.iloc[0]
+    mrn = patient_info['MR#']
 
     # --- Filter out invalid results ---
     valid_results_list = ['positive', 'negative']
@@ -46,11 +48,9 @@ def generate_pdf_report(sample_group, output_filename):
     valid_results_df = sample_group[valid_mask]
     invalid_results_df = sample_group[~valid_mask]
 
-    if not invalid_results_df.empty:
-        mrn = patient_info['MR#']
-        print(f"Warning: Invalid results found for patient MR# {mrn}")
-        for _, row in invalid_results_df.iterrows():
-            print(f"{row['Test Name']}: {row['Test result']}")
+    # Log any invalid results to the summary
+    for _, row in invalid_results_df.iterrows():
+        summary.log_invalid_result(mrn, row['Test Name'], row['Test result'])
 
     # --- 1. Laboratory Header ---
     story.extend(get_lab_header())
@@ -62,7 +62,7 @@ def generate_pdf_report(sample_group, output_filename):
 
     # --- 3. Patient and Specimen Info ---
     # We pass the original sample_group to ensure 'Test Completed Date' is accurate
-    story.extend(get_info_tables(patient_info, sample_group))
+    story.extend(get_info_tables(patient_info, sample_group, summary))
     story.append(Spacer(1, 0.2 * inch))
 
     # --- 4. Conditional Positive Note ---
@@ -141,7 +141,7 @@ def get_report_title():
     title = Paragraph("urine drug test results", title_style)
     return title
 
-def get_info_tables(patient_info, sample_group):
+def get_info_tables(patient_info, sample_group, summary):
     """Creates the patient and specimen information tables.
 
     This function constructs two formatted tables: one for patient demographics
@@ -154,6 +154,7 @@ def get_info_tables(patient_info, sample_group):
             of the sample group.
         sample_group (pd.DataFrame): The DataFrame for the entire sample, used
             to derive the 'Test Completed Date'.
+        summary (RunSummary): An instance of the RunSummary class for logging.
 
     Returns:
         list: A list of ReportLab Flowables, including headers and tables for
@@ -191,11 +192,13 @@ def get_info_tables(patient_info, sample_group):
         latest_completion_ts = pd.to_datetime(sample_group['Test completed']).max()
         completed_date = latest_completion_ts.strftime('%m/%d/%Y')
     except (ValueError, TypeError) as e:
-        # If parsing fails, use the original string and print a warning
-        # We take the first available 'Test completed' value as a fallback representation
+        # If parsing fails, use the original string and log a warning
         raw_date = sample_group['Test completed'].iloc[0] if not sample_group['Test completed'].empty else "N/A"
         mrn = patient_info['MR#']
-        print(f"Warning: Could not parse 'Test completed' date for patient MR# {mrn}. Using original value. Error: {e}")
+        summary.log_error(
+            f"Patient MR# {mrn}",
+            f"Could not parse 'Test completed' date ('{raw_date}'). Using fallback. Error: {e}"
+        )
         # Fallback to using the date part of the original string
         completed_date = str(raw_date).split(' ')[0]
 

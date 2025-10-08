@@ -2,11 +2,13 @@ import unittest
 import pandas as pd
 import os
 from src.data_processor import load_and_process_data
+from src.run_summary import RunSummary
 
 class TestDataProcessor(unittest.TestCase):
 
     def setUp(self):
         """Set up for the test cases."""
+        self.summary = RunSummary()
         self.test_data_dir = 'tests/test_data'
         self.good_csv_path = os.path.join(self.test_data_dir, 'sample_data.csv')
         self.empty_csv_path = os.path.join(self.test_data_dir, 'empty_data.csv')
@@ -19,6 +21,8 @@ class TestDataProcessor(unittest.TestCase):
         self.same_date_diff_mrn_csv_path = os.path.join(self.test_data_dir, 'same_date_diff_mrn.csv')
 
         # Create an empty file for testing
+        if not os.path.exists(self.test_data_dir):
+            os.makedirs(self.test_data_dir)
         with open(self.empty_csv_path, 'w') as f:
             pass
 
@@ -74,7 +78,7 @@ class TestDataProcessor(unittest.TestCase):
 
     def test_load_and_process_data_success(self):
         """Test successful loading and processing of data."""
-        grouped_data = load_and_process_data(self.good_csv_path)
+        grouped_data = load_and_process_data(self.good_csv_path, self.summary)
         self.assertIsNotNone(grouped_data)
         self.assertIsInstance(grouped_data, pd.core.groupby.generic.DataFrameGroupBy)
         # Expecting 4 unique patient groups from the sample data
@@ -82,28 +86,28 @@ class TestDataProcessor(unittest.TestCase):
 
     def test_file_not_found(self):
         """Test that a nonexistent file returns None."""
-        grouped_data = load_and_process_data(self.non_existent_csv_path)
+        grouped_data = load_and_process_data(self.non_existent_csv_path, self.summary)
         self.assertIsNone(grouped_data)
 
     def test_empty_csv(self):
         """Test that an empty CSV file is handled gracefully."""
-        grouped_data = load_and_process_data(self.empty_csv_path)
+        grouped_data = load_and_process_data(self.empty_csv_path, self.summary)
         self.assertIsNone(grouped_data)
 
     def test_malformed_csv(self):
         """Test a malformed CSV file."""
-        grouped_data = load_and_process_data(self.malformed_csv_path)
+        grouped_data = load_and_process_data(self.malformed_csv_path, self.summary)
         self.assertIsNone(grouped_data)
 
     def test_filtering_of_patient_data(self):
         """Test that only 'Patient' type rows are included."""
-        grouped_data = load_and_process_data(self.good_csv_path)
+        grouped_data = load_and_process_data(self.good_csv_path, self.summary)
         for _, group in grouped_data:
             self.assertTrue((group['Type'] == 'Patient').all())
 
     def test_grouping_of_data(self):
         """Test that data is grouped correctly by MR# and Date collected."""
-        grouped_data = load_and_process_data(self.good_csv_path)
+        grouped_data = load_and_process_data(self.good_csv_path, self.summary)
         # Check the groups
         groups = list(grouped_data.groups.keys())
         self.assertIn(('MRN001', '2023-01-15'), groups)
@@ -118,18 +122,18 @@ class TestDataProcessor(unittest.TestCase):
 
     def test_missing_required_column(self):
         """Test that a file with a missing required column returns None."""
-        grouped_data = load_and_process_data(self.missing_column_csv_path)
+        grouped_data = load_and_process_data(self.missing_column_csv_path, self.summary)
         self.assertIsNone(grouped_data)
 
     def test_no_patient_data_warning(self):
         """Test that a warning is printed when no 'Patient' data is found."""
-        grouped_data = load_and_process_data(self.no_patient_data_csv_path)
+        grouped_data = load_and_process_data(self.no_patient_data_csv_path, self.summary)
         self.assertIsNotNone(grouped_data)
         self.assertEqual(len(grouped_data), 0)
 
     def test_inconsistent_columns(self):
         """Test that a CSV with inconsistent column counts is handled gracefully."""
-        grouped_data = load_and_process_data(self.inconsistent_columns_csv_path)
+        grouped_data = load_and_process_data(self.inconsistent_columns_csv_path, self.summary)
         self.assertIsNone(grouped_data, "Should return None for inconsistent columns.")
 
     def test_empty_lines_in_csv(self):
@@ -142,14 +146,14 @@ class TestDataProcessor(unittest.TestCase):
             f.write("Patient,1,2023-01-15,John Doe,MRN001,01/01/1990,Collector,01/15/2023 12:00:00 PM,Test,Positive\n")
             f.write("\n")
 
-        grouped_data = load_and_process_data(valid_file_with_empty_lines)
+        grouped_data = load_and_process_data(valid_file_with_empty_lines, self.summary)
         self.assertIsNotNone(grouped_data)
         self.assertEqual(len(grouped_data), 1)
         os.remove(valid_file_with_empty_lines)
 
     def test_same_date_different_mrn(self):
         """Test that records with the same date but different MRNs are in different groups."""
-        grouped_data = load_and_process_data(self.same_date_diff_mrn_csv_path)
+        grouped_data = load_and_process_data(self.same_date_diff_mrn_csv_path, self.summary)
         self.assertIsNotNone(grouped_data)
         self.assertEqual(len(grouped_data), 2, "Should create two separate groups for different MRNs on the same day.")
         groups = list(grouped_data.groups.keys())

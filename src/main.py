@@ -10,6 +10,7 @@ import pandas as pd
 from data_processor import load_and_process_data
 from pdf_generator import generate_pdf_report
 from utils import sanitize_filename
+from run_summary import RunSummary
 
 def main(input_file, output_dir):
     """Drives the PDF report generation process from start to finish.
@@ -26,17 +27,21 @@ def main(input_file, output_dir):
             report files will be saved. The directory will be created if it
             does not exist.
     """
+    summary = RunSummary()
+    summary.set_output_dir(output_dir)
+
     # Ensure the output directory exists
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     # Step 1: Load and process the data
-    grouped_samples = load_and_process_data(input_file)
+    grouped_samples = load_and_process_data(input_file, summary)
 
     if not grouped_samples:
-        print("No patient data found or an error occurred. Exiting.")
+        summary.print_summary()
         return
 
+    summary.set_total_samples(len(grouped_samples))
     print(f"Found {len(grouped_samples)} unique patient groups. Generating reports...")
 
     # Step 2: Iterate through each patient group and generate a PDF
@@ -54,7 +59,15 @@ def main(input_file, output_dir):
             # Get user's choice
             while True:
                 try:
-                    choice = input(f"Enter your choice (1-{len(unique_sample_ids)}): ")
+                    choice = input(f"Enter your choice (1-{len(unique_sample_ids)}, or 's' to skip): ")
+                    if choice.lower() == 's':
+                        print("\nOperation cancelled by user. Skipping this patient.")
+                        # Find a representative sample ID to log the skip
+                        skipped_id = unique_sample_ids[0]
+                        summary.log_user_skip(mrn, date_collected, skipped_id)
+                        sample_group = None
+                        break
+
                     choice_idx = int(choice) - 1
                     if 0 <= choice_idx < len(unique_sample_ids):
                         selected_id = unique_sample_ids[choice_idx]
@@ -64,9 +77,10 @@ def main(input_file, output_dir):
                     else:
                         print(f"  > Invalid choice. Please enter a number between 1 and {len(unique_sample_ids)}.")
                 except ValueError:
-                    print("  > Invalid input. Please enter a number.")
+                    print("  > Invalid input. Please enter a number or 's'.")
                 except (KeyboardInterrupt, EOFError):
-                    print("\nOperation cancelled by user. Skipping this patient.")
+                    skipped_id = unique_sample_ids[0]
+                    summary.log_user_skip(mrn, date_collected, skipped_id)
                     sample_group = None  # Skip processing
                     break
 
@@ -82,9 +96,11 @@ def main(input_file, output_dir):
         try:
             collection_date_obj = pd.to_datetime(date_collected)
             collection_date_str = collection_date_obj.strftime('%Y-%m-%d')
-        except Exception as e:
-            print(f"Warning: Could not parse date '{date_collected}'. Using original value. Error: {e}")
-            collection_date_str = date_collected.replace('/', '-')
+        except Exception:
+            # Log a failure and skip this group
+            error_msg = f"The date '{date_collected}' in the 'Date collected' column could not be parsed."
+            summary.log_failure(f"MR# {mrn}", error_msg)
+            continue
 
         # Construct the output filename
         output_filename = f"{patient_name}_{mrn}_{collection_date_str}.pdf"
@@ -95,12 +111,14 @@ def main(input_file, output_dir):
 
         try:
             # Step 3: Generate the PDF
-            generate_pdf_report(sample_group, output_path)
+            generate_pdf_report(sample_group, output_path, summary)
+            summary.log_success()
             print(f"    ...Successfully saved to {output_path}")
         except Exception as e:
-            print(f"    ...Error generating PDF for sample {selected_sample_id}: {e}")
+            summary.log_failure(f"MR# {mrn} / Sample {selected_sample_id}", f"Failed to generate PDF: {e}")
+            print(f"    ...Error generating PDF for sample {selected_sample_id}")
 
-    print("\nPDF generation process complete.")
+    summary.print_summary()
 
 if __name__ == '__main__':  # pragma: no cover
     parser = argparse.ArgumentParser(description="Automated PDF Laboratory Report Generator")
