@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock, ANY
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from main import main
+from main import main, generate_reports
 from src.run_summary import RunSummary
 
 class TestMain(unittest.TestCase):
@@ -37,11 +37,12 @@ class TestMain(unittest.TestCase):
         expected_filename = "Conflict-Patient_MRN006_2023-01-20.pdf"
         output_files = os.listdir(self.output_dir)
 
-        # There should be 3 reports in total: one for MRN001, one for MRN002, and one for MRN006
-        self.assertEqual(len(output_files), 3, "Should generate three reports in total.")
+        # There should be 4 reports in total: one for MRN001, one for MRN002, one for MRN006, and the summary
+        self.assertEqual(len(output_files), 4, "Should generate four reports in total.")
 
         # Check that the specific, user-selected report exists
         self.assertIn(expected_filename, output_files, "The PDF for the selected conflicted sample should be generated.")
+        self.assertIn("positives_summary.pdf", output_files, "The positives summary PDF should be generated.")
 
     def test_output_directory_creation(self):
         """Test that the output directory is created if it does not exist."""
@@ -86,9 +87,9 @@ class TestMain(unittest.TestCase):
         input_file = "tests/test_data/conflict_data.csv"
         main(input_file, self.output_dir, organize_by=None)
 
-        # The conflict patient should be skipped
+        # The conflict patient should be skipped, but summary is still generated
         output_files = os.listdir(self.output_dir)
-        self.assertEqual(len(output_files), 2)
+        self.assertEqual(len(output_files), 3)
         self.assertNotIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
 
         # Check that the skip was logged
@@ -98,6 +99,7 @@ class TestMain(unittest.TestCase):
     def test_malformed_date_handling(self, mock_summary_class):
         """Test that a malformed date does not crash the application and is logged."""
         mock_summary_instance = MagicMock()
+        mock_summary_instance._positive_results = []
         mock_summary_class.return_value = mock_summary_instance
 
         malformed_date_file = os.path.join(self.test_data_dir, "malformed_date_data.csv")
@@ -122,6 +124,7 @@ class TestMain(unittest.TestCase):
     def test_pdf_generation_error_handling(self, mock_generate_pdf, mock_summary_class):
         """Test that an error during PDF generation is caught and logged."""
         mock_summary_instance = MagicMock()
+        mock_summary_instance._positive_results = []
         mock_summary_class.return_value = mock_summary_instance
 
         input_file = "tests/test_data/sample_data.csv"
@@ -213,6 +216,101 @@ class TestMain(unittest.TestCase):
         finally:
             if os.path.exists(input_file):
                 os.remove(input_file)
+
+    def test_positives_summary_pdf_generation(self):
+        """Test that a summary PDF of positive results is created."""
+        input_file = "tests/test_data/sample_data.csv"  # This file has positive results
+        main(input_file, self.output_dir, organize_by=None)
+
+        summary_pdf_path = os.path.join(self.output_dir, "positives_summary.pdf")
+        self.assertTrue(os.path.exists(summary_pdf_path), "The positives summary PDF should be created.")
+
+    def test_no_positives_summary_pdf_when_no_positives(self):
+        """Test that a summary PDF is NOT created when there are no positive results."""
+        input_file = os.path.join(self.test_data_dir, "negative_only_data.csv")
+        with open(input_file, 'w') as f:
+            f.write("Type,ID,Date collected,Name,MR#,Date of Birth,Collected by,Test completed,Test Name,Test result,Test units,Flags,Comment\n")
+            f.write("Patient,1,2023-01-01,No Positives,MRN-NEG,01/01/1990,Collector,2023-01-01 12:00,Test,Negative,,\n")
+
+        try:
+            main(input_file, self.output_dir, organize_by=None)
+            summary_pdf_path = os.path.join(self.output_dir, "positives_summary.pdf")
+            self.assertFalse(os.path.exists(summary_pdf_path), "The positives summary PDF should NOT be created if there are no positives.")
+        finally:
+            if os.path.exists(input_file):
+                os.remove(input_file)
+
+
+    @patch('builtins.input', side_effect=KeyboardInterrupt)
+    @patch('builtins.print')
+    def test_cli_conflict_handler_keyboard_interrupt(self, mock_print, mock_input):
+        """Test that a KeyboardInterrupt during conflict resolution is handled gracefully."""
+        input_file = "tests/test_data/conflict_data.csv"
+        main(input_file, self.output_dir, organize_by=None)
+
+        # The conflict should be skipped, and a message printed
+        mock_print.assert_any_call("\nOperation cancelled by user.")
+        # Only the non-conflicting reports should be generated
+        output_files = os.listdir(self.output_dir)
+        self.assertNotIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
+        # 2 reports, no summary pdf because positives were in the skipped sample
+        self.assertEqual(len(output_files), 2)
+
+
+    @patch('builtins.input', side_effect=EOFError)
+    @patch('builtins.print')
+    def test_cli_conflict_handler_eof_error(self, mock_print, mock_input):
+        """Test that an EOFError during conflict resolution is handled gracefully."""
+        input_file = "tests/test_data/conflict_data.csv"
+        main(input_file, self.output_dir, organize_by=None)
+
+        # The conflict should be skipped, and a message printed
+        mock_print.assert_any_call("\nOperation cancelled by user.")
+        # Only the non-conflicting reports should be generated
+        output_files = os.listdir(self.output_dir)
+        self.assertNotIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
+        # 2 reports, no summary pdf because positives were in the skipped sample
+        self.assertEqual(len(output_files), 2)
+
+
+    def test_no_conflict_handler(self):
+        """Test that the code proceeds without error if no conflict handler is provided."""
+        input_file = "tests/test_data/conflict_data.csv"
+        summary = RunSummary()
+        # When no handler is provided, the conflicting sample is skipped.
+        generate_reports(input_file, self.output_dir, None, summary, progress_callback=None, conflict_handler=None)
+        # 2 reports + summary
+        self.assertEqual(len(os.listdir(self.output_dir)), 3)
+
+    @patch('main.RunSummary')
+    def test_malformed_test_completed_date(self, mock_summary_class):
+        """Test handling of a malformed 'Test completed' date."""
+        mock_summary_instance = MagicMock()
+        mock_summary_class.return_value = mock_summary_instance
+        input_file = os.path.join(self.test_data_dir, "malformed_completed_date.csv")
+        with open(input_file, 'w') as f:
+            f.write("Type,ID,Date collected,Name,MR#,Date of Birth,Collected by,Test completed,Test Name,Test result,Test units,Flags,Comment\n")
+            f.write("Patient,1,2023-01-01,Bad Date,MRN-BD,DOB,Collector,BAD-DATE,Test,Positive,ng/mL,,\n")
+
+        try:
+            main(input_file, self.output_dir, organize_by=None)
+            # A report should still be generated with 'unknown-date' in the filename
+            self.assertTrue(os.path.exists(os.path.join(self.output_dir, "Bad-Date_MRN-BD_2023-01-01.pdf")))
+            mock_summary_instance.log_error.assert_called_once_with(
+                "Patient MR# MRN-BD", "Could not parse 'Test completed' date ('BAD-DATE'). Error: Unknown datetime string format, unable to parse: BAD-DATE, at position 0"
+            )
+        finally:
+            if os.path.exists(input_file):
+                os.remove(input_file)
+
+    @patch('main.generate_positives_summary_pdf', side_effect=Exception("Summary PDF Failed"))
+    @patch('builtins.print')
+    def test_positives_summary_pdf_generation_error(self, mock_print, mock_generate_summary):
+        """Test that an error during summary PDF generation is caught and printed."""
+        input_file = "tests/test_data/sample_data.csv"
+        main(input_file, self.output_dir, organize_by=None)
+        mock_print.assert_any_call("Error generating positives summary PDF: Summary PDF Failed")
+
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

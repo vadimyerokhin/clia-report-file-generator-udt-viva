@@ -8,7 +8,7 @@ import os
 import argparse
 import pandas as pd
 from data_processor import load_and_process_data
-from pdf_generator import generate_pdf_report
+from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
 from utils import sanitize_filename
 from run_summary import RunSummary
 
@@ -101,7 +101,7 @@ def generate_reports(input_file, output_dir, organize_by, summary, progress_call
             progress_callback(f"  - Generating report for {patient_info['Name']} (Sample ID: {selected_sample_id})...")
 
         try:
-            generate_pdf_report(sample_group, output_path, summary, completed_date_for_pdf)
+            generate_pdf_report(sample_group, output_path, summary, completed_date_for_pdf, input_file)
             summary.log_success()
             if progress_callback:
                 progress_callback(f"    ...Successfully saved to {output_path}")
@@ -137,6 +137,15 @@ def main(input_file, output_dir, organize_by=None):
                 return None
 
     generate_reports(input_file, output_dir, organize_by, summary, progress_callback=print, conflict_handler=cli_conflict_handler)
+
+    # Generate the summary PDF of positive results
+    try:
+        generate_positives_summary_pdf(summary, output_dir)
+        if summary._positive_results:
+            print(f"Successfully generated positives summary PDF: {os.path.join(output_dir, 'positives_summary.pdf')}")
+    except Exception as e:
+        print(f"Error generating positives summary PDF: {e}")
+
     summary.print_summary()
 
 if __name__ == '__main__':  # pragma: no cover

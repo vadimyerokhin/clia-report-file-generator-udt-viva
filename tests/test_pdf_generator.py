@@ -120,6 +120,9 @@ class TestPdfGenerator(unittest.TestCase):
         # Check for the completed date in the specimen table
         specimen_table = info_tables[4]
         self.assertIn(completed_date, specimen_table._cellvalues[4][1].text)
+        # Check that the source filename is NOT present when not provided
+        specimen_id_cell_content = specimen_table._cellvalues[1][1].text
+        self.assertNotIn("(Source:", specimen_id_cell_content)
 
     def test_get_conditional_note(self):
         """Test the conditional note for positive results."""
@@ -283,6 +286,15 @@ class TestPdfGenerator(unittest.TestCase):
         self.assertEqual(specimen_data[2][1].text, '')
         # Check 'Collected by' (was np.nan), should now be an empty string
         self.assertEqual(specimen_data[3][1].text, '')
+
+    def test_info_table_with_filename(self):
+        """Test that the source filename is included in the info table when provided."""
+        completed_date = "01/15/2023"
+        input_filename = "data/source_data.csv"
+        info_tables = get_info_tables(self.patient_info_positive, self.summary, completed_date, input_filename)
+        specimen_table = info_tables[4]
+        specimen_id_cell = specimen_table._cellvalues[1][1]
+        self.assertIn(f"(Source: {os.path.basename(input_filename)})", specimen_id_cell.text)
 
 
 if __name__ == '__main__':
