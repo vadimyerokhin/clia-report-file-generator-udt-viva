@@ -58,7 +58,7 @@ def load_and_process_data(file_path):
 
     return grouped_samples
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     # This is for testing purposes to ensure the data processing works as expected.
     input_file = 'data/Test_Data.csv'
     processed_data = load_and_process_data(input_file)

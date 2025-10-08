@@ -17,6 +17,10 @@ class TestSanitizeFilename(unittest.TestCase):
         # Test case with an empty string
         self.assertEqual(sanitize_filename(''), '')
 
+    def test_handles_none_input(self):
+        # Test case with None as input
+        self.assertEqual(sanitize_filename(None), '')
+
     def test_collapses_multiple_illegal_chars_and_spaces(self):
         # Test case to ensure multiple spaces and illegal chars are collapsed to a single hyphen
         name_with_multiple = 'Jane   Doe///**More'

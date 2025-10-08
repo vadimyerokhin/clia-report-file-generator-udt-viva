@@ -33,7 +33,7 @@ def sanitize_filename(filename):
 
     return sanitized_filename
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     # Example usage for direct testing
     test_names = [
         "John Doe",

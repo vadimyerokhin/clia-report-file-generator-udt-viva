@@ -102,7 +102,7 @@ def main(input_file, output_dir):
 
     print("\nPDF generation process complete.")
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     parser = argparse.ArgumentParser(description="Automated PDF Laboratory Report Generator")
     parser.add_argument(
         '-i', '--input',
