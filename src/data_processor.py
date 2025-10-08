@@ -53,8 +53,8 @@ def load_and_process_data(file_path):
     if patient_data.empty:
         print(f"Warning: No 'Patient' data found in {file_path}.")
 
-    # Step 4: Group Data by Unique Patient Sample (ID and Date collected)
-    grouped_samples = patient_data.groupby(['ID', 'Date collected'])
+    # Step 4: Group Data by Unique Patient Sample (MR# and Date collected)
+    grouped_samples = patient_data.groupby(['MR#', 'Date collected'])
 
     return grouped_samples
 

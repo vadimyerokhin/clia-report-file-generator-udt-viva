@@ -37,35 +37,68 @@ def main(input_file, output_dir):
         print("No patient data found or an error occurred. Exiting.")
         return
 
-    print(f"Found {len(grouped_samples)} unique patient samples. Generating reports...")
+    print(f"Found {len(grouped_samples)} unique patient groups. Generating reports...")
 
-    # Step 2: Iterate through each sample and generate a PDF
-    for (sample_id, date_collected), sample_group in grouped_samples:
+    # Step 2: Iterate through each patient group and generate a PDF
+    for (mrn, date_collected), patient_group in grouped_samples:
+        sample_group = patient_group
+        unique_sample_ids = patient_group['ID'].unique()
+
+        # If multiple samples exist for the same patient on the same day, prompt user
+        if len(unique_sample_ids) > 1:
+            print(f"\nConflict: Multiple sample records found for patient MR# {mrn} on {date_collected}.")
+            print("Please select which sample to generate a report for:")
+            for i, sample_id in enumerate(unique_sample_ids):
+                print(f"  {i + 1}: Sample ID {sample_id}")
+
+            # Get user's choice
+            while True:
+                try:
+                    choice = input(f"Enter your choice (1-{len(unique_sample_ids)}): ")
+                    choice_idx = int(choice) - 1
+                    if 0 <= choice_idx < len(unique_sample_ids):
+                        selected_id = unique_sample_ids[choice_idx]
+                        sample_group = patient_group[patient_group['ID'] == selected_id].copy()
+                        print(f"  > Processing selected Sample ID: {selected_id}")
+                        break
+                    else:
+                        print(f"  > Invalid choice. Please enter a number between 1 and {len(unique_sample_ids)}.")
+                except ValueError:
+                    print("  > Invalid input. Please enter a number.")
+                except (KeyboardInterrupt, EOFError):
+                    print("\nOperation cancelled by user. Skipping this patient.")
+                    sample_group = None  # Skip processing
+                    break
+
+        if sample_group is None or sample_group.empty:
+            continue
+
         # Get patient info for filename
         patient_info = sample_group.iloc[0]
         patient_name = sanitize_filename(patient_info['Name'])
-        mrn = patient_info['MR#']
+        # mrn is from the groupby key
 
         # Format collection date for filename (YYYY-MM-DD)
         try:
-            collection_date_obj = pd.to_datetime(patient_info['Date collected'])
+            collection_date_obj = pd.to_datetime(date_collected)
             collection_date_str = collection_date_obj.strftime('%Y-%m-%d')
         except Exception as e:
-            print(f"Warning: Could not parse date '{patient_info['Date collected']}'. Using original value. Error: {e}")
-            collection_date_str = patient_info['Date collected'].replace('/', '-')
+            print(f"Warning: Could not parse date '{date_collected}'. Using original value. Error: {e}")
+            collection_date_str = date_collected.replace('/', '-')
 
         # Construct the output filename
         output_filename = f"{patient_name}_{mrn}_{collection_date_str}.pdf"
         output_path = os.path.join(output_dir, output_filename)
 
-        print(f"  - Generating report for {patient_info['Name']} (Sample ID: {sample_id})...")
+        selected_sample_id = sample_group['ID'].iloc[0]
+        print(f"  - Generating report for {patient_info['Name']} (Sample ID: {selected_sample_id})...")
 
         try:
             # Step 3: Generate the PDF
             generate_pdf_report(sample_group, output_path)
             print(f"    ...Successfully saved to {output_path}")
         except Exception as e:
-            print(f"    ...Error generating PDF for sample {sample_id}: {e}")
+            print(f"    ...Error generating PDF for sample {selected_sample_id}: {e}")
 
     print("\nPDF generation process complete.")
 

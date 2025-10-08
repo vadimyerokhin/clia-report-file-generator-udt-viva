@@ -67,17 +67,17 @@ class TestDataProcessor(unittest.TestCase):
             self.assertTrue((group['Type'] == 'Patient').all())
 
     def test_grouping_of_data(self):
-        """Test that data is grouped correctly by ID and Date collected."""
+        """Test that data is grouped correctly by MR# and Date collected."""
         grouped_data = load_and_process_data(self.good_csv_path)
         # Check the groups
         groups = list(grouped_data.groups.keys())
-        self.assertIn((1, '2023-01-15'), groups)
-        self.assertIn((2, '2023-01-16'), groups)
-        self.assertIn((4, '2023-01-18'), groups)
-        self.assertIn((5, '2023-01-19'), groups)
+        self.assertIn(('MRN001', '2023-01-15'), groups)
+        self.assertIn(('MRN002', '2023-01-16'), groups)
+        self.assertIn(('MRN004', '2023-01-18'), groups)
+        self.assertIn(('MRN005', '2023-01-19'), groups)
 
         # Check content of one group
-        group1 = grouped_data.get_group((1, '2023-01-15'))
+        group1 = grouped_data.get_group(('MRN001', '2023-01-15'))
         self.assertEqual(len(group1), 3)
         self.assertEqual(group1['Name'].iloc[0], 'John Doe')
 
