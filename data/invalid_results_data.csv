@@ -1,0 +1,8 @@
+Type,Request type,ID,Name,MR#,Sample type,Date of Birth,Sex,Physician,Category,Tested by,Comment,Collected by,Date collected,Test Name,Test abbreviation,Test code,Test revision,Test result,Calculated result,Test units,Flags,Test completed
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Amphetamines 500,AM5,1004,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Barbiturates,BA5,1005,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Benzodiazepines 200,BZ2,1006,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,2,JANE DOE,DOE-J-1985,Urine,5/15/1985,Female,,,admin,,JD,10/4/2025,Amphetamines 500,AM5,1004,0,Positive,,,-,10/7/2025 10:00:00 AM
+Patient,Routine,2,JANE DOE,DOE-J-1985,Urine,5/15/1985,Female,,,admin,,JD,10/4/2025,Barbiturates,BA5,1005,0,PENDING,,,-,10/7/2025 10:00:00 AM
+Patient,Routine,2,JANE DOE,DOE-J-1985,Urine,5/15/1985,Female,,,admin,,JD,10/4/2025,Cocaine 150,CO1,1008,0,Negative,,,-,10/7/2025 10:00:00 AM
+Patient,Routine,2,JANE DOE,DOE-J-1985,Urine,5/15/1985,Female,,,admin,,JD,10/4/2025,Fentanyl 1,FTL1,1009,0,ERROR,,,-,10/7/2025 10:00:00 AM

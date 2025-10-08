@@ -19,8 +19,8 @@ def generate_pdf_report(sample_group, output_filename):
 
     This function orchestrates the creation of a PDF document by assembling
     various components (header, title, info tables, results, footer). It takes a
-    DataFrame group corresponding to a single sample and saves the generated
-    PDF to the specified file.
+    DataFrame group corresponding to a single sample, filters out invalid test
+    results, and saves the generated PDF to the specified file.
 
     Args:
         sample_group (pd.DataFrame): A DataFrame containing all data rows for a
@@ -37,6 +37,21 @@ def generate_pdf_report(sample_group, output_filename):
     # Get consistent patient info from the first row of the group
     patient_info = sample_group.iloc[0]
 
+    # --- Filter out invalid results ---
+    valid_results_list = ['positive', 'negative']
+    # Ensure 'Test result' column is string type to use .str accessor
+    sample_group['Test result'] = sample_group['Test result'].astype(str)
+    valid_mask = sample_group['Test result'].str.lower().isin(valid_results_list)
+
+    valid_results_df = sample_group[valid_mask]
+    invalid_results_df = sample_group[~valid_mask]
+
+    if not invalid_results_df.empty:
+        mrn = patient_info['MR#']
+        print(f"Warning: Invalid results found for patient MR# {mrn}")
+        for _, row in invalid_results_df.iterrows():
+            print(f"{row['Test Name']}: {row['Test result']}")
+
     # --- 1. Laboratory Header ---
     story.extend(get_lab_header())
     story.append(Spacer(1, 0.2 * inch))
@@ -46,16 +61,20 @@ def generate_pdf_report(sample_group, output_filename):
     story.append(Spacer(1, 0.2 * inch))
 
     # --- 3. Patient and Specimen Info ---
+    # We pass the original sample_group to ensure 'Test Completed Date' is accurate
     story.extend(get_info_tables(patient_info, sample_group))
     story.append(Spacer(1, 0.2 * inch))
 
     # --- 4. Conditional Positive Note ---
-    if 'Positive' in sample_group['Test result'].values:
+    # Check for positive results in the VALID data (case-insensitive)
+    if valid_results_df['Test result'].str.lower().eq('positive').any():
         story.append(get_conditional_note())
         story.append(Spacer(1, 0.1 * inch))
 
     # --- 5. Test Results Table ---
-    story.extend(get_results_table(sample_group))
+    # Generate the table using ONLY the valid results, if any exist
+    if not valid_results_df.empty:
+        story.extend(get_results_table(valid_results_df))
 
     # --- 6. Footer ---
     story.append(Spacer(1, 0.5 * inch))
