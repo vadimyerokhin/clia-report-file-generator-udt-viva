@@ -25,9 +25,13 @@ def load_and_process_data(file_path):
         return None
 
     # Step 2: Validate required columns
-    required_columns = ['Type', 'ID', 'Date collected']
-    if not all(col in all_data.columns for col in required_columns):
-        print(f"Error: The file {file_path} is missing one of the required columns: {required_columns}")
+    required_columns = [
+        'Type', 'ID', 'Date collected', 'Name', 'MR#', 'Date of Birth',
+        'Collected by', 'Test completed', 'Test Name', 'Test result'
+    ]
+    missing_columns = [col for col in required_columns if col not in all_data.columns]
+    if missing_columns:
+        print(f"Error: The file {file_path} is missing the following required columns: {', '.join(missing_columns)}")
         return None
 
     # Step 3: Filter the data to include only 'Patient' type rows

@@ -12,6 +12,7 @@ class TestDataProcessor(unittest.TestCase):
         self.empty_csv_path = os.path.join(self.test_data_dir, 'empty_data.csv')
         self.malformed_csv_path = os.path.join(self.test_data_dir, 'malformed_data.csv')
         self.non_existent_csv_path = os.path.join(self.test_data_dir, 'no_such_file.csv')
+        self.missing_column_csv_path = os.path.join(self.test_data_dir, 'missing_column.csv')
 
         # Create an empty file for testing
         with open(self.empty_csv_path, 'w') as f:
@@ -22,12 +23,19 @@ class TestDataProcessor(unittest.TestCase):
             f.write("ID,Date collected,Name\\n")
             f.write("1,2023-01-15,John Doe,extra_column\\n")
 
+        # Create a file with a missing required column for PDF generation
+        with open(self.missing_column_csv_path, 'w') as f:
+            f.write("Type,ID,Date collected,MR#\n")
+            f.write("Patient,1,2023-01-15,MRN001\n")
+
     def tearDown(self):
         """Clean up after tests."""
         if os.path.exists(self.empty_csv_path):
             os.remove(self.empty_csv_path)
         if os.path.exists(self.malformed_csv_path):
             os.remove(self.malformed_csv_path)
+        if os.path.exists(self.missing_column_csv_path):
+            os.remove(self.missing_column_csv_path)
 
     def test_load_and_process_data_success(self):
         """Test successful loading and processing of data."""
@@ -72,6 +80,11 @@ class TestDataProcessor(unittest.TestCase):
         group1 = grouped_data.get_group((1, '2023-01-15'))
         self.assertEqual(len(group1), 3)
         self.assertEqual(group1['Name'].iloc[0], 'John Doe')
+
+    def test_missing_required_column(self):
+        """Test that a file with a missing required column returns None."""
+        grouped_data = load_and_process_data(self.missing_column_csv_path)
+        self.assertIsNone(grouped_data)
 
 if __name__ == '__main__':
     unittest.main()
