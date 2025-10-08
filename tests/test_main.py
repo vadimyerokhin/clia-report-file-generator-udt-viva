@@ -31,7 +31,7 @@ class TestMain(unittest.TestCase):
     def test_conflict_resolution_flow(self, mock_input):
         """Test the full flow with a data file containing a conflict."""
         input_file = "tests/test_data/conflict_data.csv"
-        main(input_file, self.output_dir)
+        main(input_file, self.output_dir, organize_by=None)
 
         # Check that only one report was generated for the conflict patient
         expected_filename = "Conflict-Patient_MRN006_2023-01-20.pdf"
@@ -47,7 +47,7 @@ class TestMain(unittest.TestCase):
         """Test that the output directory is created if it does not exist."""
         self.assertFalse(os.path.exists(self.output_dir))
         input_file = "tests/test_data/sample_data.csv"
-        main(input_file, self.output_dir)
+        main(input_file, self.output_dir, organize_by=None)
         self.assertTrue(os.path.exists(self.output_dir))
 
     @patch('main.load_and_process_data', return_value=None)
@@ -57,7 +57,7 @@ class TestMain(unittest.TestCase):
         with open(input_file, 'w') as f:
             pass  # Create empty file
 
-        main(input_file, self.output_dir)
+        main(input_file, self.output_dir, organize_by=None)
 
         self.assertTrue(os.path.exists(self.output_dir))
         self.assertEqual(len(os.listdir(self.output_dir)), 0)
@@ -70,7 +70,7 @@ class TestMain(unittest.TestCase):
     def test_invalid_user_input_for_conflict(self, mock_input):
         """Test handling of invalid and out-of-range user input."""
         input_file = "tests/test_data/conflict_data.csv"
-        main(input_file, self.output_dir)
+        main(input_file, self.output_dir, organize_by=None)
         # Check that the first valid choice was processed
         output_files = os.listdir(self.output_dir)
         self.assertIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
@@ -84,7 +84,7 @@ class TestMain(unittest.TestCase):
         mock_summary_class.return_value = mock_summary_instance
 
         input_file = "tests/test_data/conflict_data.csv"
-        main(input_file, self.output_dir)
+        main(input_file, self.output_dir, organize_by=None)
 
         # The conflict patient should be skipped
         output_files = os.listdir(self.output_dir)
@@ -106,7 +106,7 @@ class TestMain(unittest.TestCase):
             f.write("Patient,1,NOT-A-DATE,Bad Date Patient,MRN-DATE,01/01/1990,Collector,01/15/2023 12:00:00 PM,Test,Positive,ng/mL,,\n")
 
         try:
-            main(malformed_date_file, self.output_dir)
+            main(malformed_date_file, self.output_dir, organize_by=None)
             # The file should NOT be created
             self.assertEqual(len(os.listdir(self.output_dir)), 0)
             # The error should be logged
@@ -125,7 +125,7 @@ class TestMain(unittest.TestCase):
         mock_summary_class.return_value = mock_summary_instance
 
         input_file = "tests/test_data/sample_data.csv"
-        main(input_file, self.output_dir)
+        main(input_file, self.output_dir, organize_by=None)
 
         # The error should be logged for each of the 4 samples
         self.assertEqual(mock_summary_instance.log_failure.call_count, 4)
@@ -135,6 +135,84 @@ class TestMain(unittest.TestCase):
 
         # No files should be created because the mock always raises an exception
         self.assertEqual(len(os.listdir(self.output_dir)), 0)
+
+    def test_organization_by_collection_date(self):
+        """Test that PDFs are organized by collection date."""
+        input_file = os.path.join(self.test_data_dir, "org_data.csv")
+        # Using a fixed date format that the application expects for filenames
+        with open(input_file, 'w') as f:
+            f.write("Type,ID,Date collected,Name,MR#,Date of Birth,Collected by,Test completed,Test Name,Test result,Test units,Flags,Comment\n")
+            f.write("Patient,1,2023-02-01,Patient A,MRN1,01/01/1990,Collector,2023-02-02 12:00,Test,Positive,,\n")
+            f.write("Patient,2,2023-02-01,Patient B,MRN2,01/01/1990,Collector,2023-02-03 12:00,Test,Negative,,\n")
+            f.write("Patient,3,2023-02-02,Patient C,MRN3,01/01/1990,Collector,2023-02-03 12:00,Test,Positive,,\n")
+
+        try:
+            main(input_file, self.output_dir, organize_by='collection-date')
+
+            # Check for subdirectories
+            self.assertTrue(os.path.isdir(os.path.join(self.output_dir, "2023-02-01")))
+            self.assertTrue(os.path.isdir(os.path.join(self.output_dir, "2023-02-02")))
+
+            # Check for files in subdirectories
+            dir1_files = os.listdir(os.path.join(self.output_dir, "2023-02-01"))
+            dir2_files = os.listdir(os.path.join(self.output_dir, "2023-02-02"))
+            self.assertEqual(len(dir1_files), 2)
+            self.assertEqual(len(dir2_files), 1)
+            self.assertIn("Patient-A_MRN1_2023-02-01.pdf", dir1_files)
+            self.assertIn("Patient-B_MRN2_2023-02-01.pdf", dir1_files)
+            self.assertIn("Patient-C_MRN3_2023-02-02.pdf", dir2_files)
+        finally:
+            if os.path.exists(input_file):
+                os.remove(input_file)
+
+    def test_organization_by_tested_date(self):
+        """Test that PDFs are organized by tested date."""
+        input_file = os.path.join(self.test_data_dir, "org_data.csv")
+        with open(input_file, 'w') as f:
+            f.write("Type,ID,Date collected,Name,MR#,Date of Birth,Collected by,Test completed,Test Name,Test result,Test units,Flags,Comment\n")
+            f.write("Patient,1,2023-02-01,Patient A,MRN1,01/01/1990,Collector,2023-02-02 12:00,Test,Positive,,\n")
+            f.write("Patient,2,2023-02-01,Patient B,MRN2,01/01/1990,Collector,2023-02-03 12:00,Test,Negative,,\n")
+            f.write("Patient,3,2023-02-02,Patient C,MRN3,01/01/1990,Collector,2023-02-03 12:00,Test,Positive,,\n")
+
+        try:
+            main(input_file, self.output_dir, organize_by='tested-date')
+
+            self.assertTrue(os.path.isdir(os.path.join(self.output_dir, "2023-02-02")))
+            self.assertTrue(os.path.isdir(os.path.join(self.output_dir, "2023-02-03")))
+
+            dir1_files = os.listdir(os.path.join(self.output_dir, "2023-02-02"))
+            dir2_files = os.listdir(os.path.join(self.output_dir, "2023-02-03"))
+            self.assertEqual(len(dir1_files), 1)
+            self.assertEqual(len(dir2_files), 2)
+            self.assertIn("Patient-A_MRN1_2023-02-01.pdf", dir1_files)
+            self.assertIn("Patient-B_MRN2_2023-02-01.pdf", dir2_files)
+            self.assertIn("Patient-C_MRN3_2023-02-02.pdf", dir2_files)
+        finally:
+            if os.path.exists(input_file):
+                os.remove(input_file)
+
+    def test_organization_by_mrn(self):
+        """Test that PDFs are organized by MRN."""
+        input_file = os.path.join(self.test_data_dir, "org_data.csv")
+        with open(input_file, 'w') as f:
+            f.write("Type,ID,Date collected,Name,MR#,Date of Birth,Collected by,Test completed,Test Name,Test result,Test units,Flags,Comment\n")
+            f.write("Patient,1,2023-02-01,Patient A,MRN1,01/01/1990,Collector,2023-02-02 12:00,Test,Positive,,\n")
+            f.write("Patient,2,2023-02-01,Patient B,MRN2,01/01/1990,Collector,2023-02-03 12:00,Test,Negative,,\n")
+            f.write("Patient,3,2023-02-02,Patient C,MRN3,01/01/1990,Collector,2023-02-03 12:00,Test,Positive,,\n")
+
+        try:
+            main(input_file, self.output_dir, organize_by='mrn')
+
+            self.assertTrue(os.path.isdir(os.path.join(self.output_dir, "MRN_MRN1")))
+            self.assertTrue(os.path.isdir(os.path.join(self.output_dir, "MRN_MRN2")))
+            self.assertTrue(os.path.isdir(os.path.join(self.output_dir, "MRN_MRN3")))
+
+            self.assertEqual(len(os.listdir(os.path.join(self.output_dir, "MRN_MRN1"))), 1)
+            self.assertEqual(len(os.listdir(os.path.join(self.output_dir, "MRN_MRN2"))), 1)
+            self.assertEqual(len(os.listdir(os.path.join(self.output_dir, "MRN_MRN3"))), 1)
+        finally:
+            if os.path.exists(input_file):
+                os.remove(input_file)
 
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

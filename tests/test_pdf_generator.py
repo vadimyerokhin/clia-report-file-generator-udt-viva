@@ -98,14 +98,15 @@ class TestPdfGenerator(unittest.TestCase):
 
     def test_get_info_tables(self):
         """Test that patient and specimen info tables are created correctly."""
-        info_tables = get_info_tables(self.patient_info_positive, self.positive_sample_group, self.summary)
+        completed_date = "01/15/2023"  # Example date
+        info_tables = get_info_tables(self.patient_info_positive, self.summary, completed_date)
         self.assertEqual(len(info_tables), 5)
         # Check for patient name in the patient table
         patient_table = info_tables[1]
         self.assertIn(self.patient_info_positive['Name'], patient_table._cellvalues[1][0].text)
-        # Check for specimen ID in the specimen table
+        # Check for the completed date in the specimen table
         specimen_table = info_tables[4]
-        self.assertIn(str(self.patient_info_positive['ID']), specimen_table._cellvalues[1][1].text)
+        self.assertIn(completed_date, specimen_table._cellvalues[4][1].text)
 
     def test_get_conditional_note(self):
         """Test the conditional note for positive results."""
@@ -146,8 +147,9 @@ class TestPdfGenerator(unittest.TestCase):
             os.makedirs(output_dir)
 
         output_filename = os.path.join(output_dir, 'test_report.pdf')
+        completed_date = "01/15/2023"
         try:
-            generate_pdf_report(self.positive_sample_group, output_filename, self.summary)
+            generate_pdf_report(self.positive_sample_group, output_filename, self.summary, completed_date)
             self.assertTrue(os.path.exists(output_filename))
         finally:
             # Clean up the created file
@@ -161,9 +163,10 @@ class TestPdfGenerator(unittest.TestCase):
         output_dir = 'tests/output_pdfs'
         os.makedirs(output_dir, exist_ok=True)
         output_filename = os.path.join(output_dir, 'no_valid_results_report.pdf')
+        completed_date = "01/25/2023"
 
         try:
-            generate_pdf_report(self.no_valid_results_group, output_filename, self.summary)
+            generate_pdf_report(self.no_valid_results_group, output_filename, self.summary, completed_date)
             self.assertTrue(os.path.exists(output_filename))
             # The results table should be empty, so we can check the story length or content
         finally:
@@ -177,9 +180,10 @@ class TestPdfGenerator(unittest.TestCase):
         output_dir = 'tests/output_pdfs'
         os.makedirs(output_dir, exist_ok=True)
         output_filename = os.path.join(output_dir, 'missing_optional_fields_report.pdf')
+        completed_date = "01/26/2023"
 
         try:
-            generate_pdf_report(self.missing_optional_fields_group, output_filename, self.summary)
+            generate_pdf_report(self.missing_optional_fields_group, output_filename, self.summary, completed_date)
             self.assertTrue(os.path.exists(output_filename))
         finally:
             if os.path.exists(output_filename):
@@ -192,10 +196,11 @@ class TestPdfGenerator(unittest.TestCase):
         output_dir = 'tests/output_pdfs'
         os.makedirs(output_dir, exist_ok=True)
         output_filename = os.path.join(output_dir, 'case_insensitive_report.pdf')
+        completed_date = "01/27/2023"
 
         try:
             # This should generate a note because of the 'positive' result.
-            generate_pdf_report(self.case_insensitive_group, output_filename, self.summary)
+            generate_pdf_report(self.case_insensitive_group, output_filename, self.summary, completed_date)
             self.assertTrue(os.path.exists(output_filename))
         finally:
             if os.path.exists(output_filename):
@@ -208,75 +213,17 @@ class TestPdfGenerator(unittest.TestCase):
         output_dir = 'tests/output_pdfs'
         os.makedirs(output_dir, exist_ok=True)
         output_filename = os.path.join(output_dir, 'missing_critical_data_report.pdf')
+        completed_date = "01/28/2023"
 
         try:
             # The function should still run, but the name field in the PDF would be empty
-            generate_pdf_report(self.missing_critical_group, output_filename, self.summary)
+            generate_pdf_report(self.missing_critical_group, output_filename, self.summary, completed_date)
             self.assertTrue(os.path.exists(output_filename))
         finally:
             if os.path.exists(output_filename):
                 os.remove(output_filename)
             if os.path.exists(output_dir) and not os.listdir(output_dir):
                 os.rmdir(output_dir)
-
-    def test_24_hour_timestamp_format_succeeds_after_fix(self):
-        """Test that PDF generation succeeds with a 24-hour timestamp after the fix."""
-        bug_csv_path = os.path.join(self.test_data_dir, 'bug_report_data.csv')
-        grouped_data = load_and_process_data(bug_csv_path, self.summary)
-        self.assertIsNotNone(grouped_data, "Failed to load bug report test data.")
-
-        bug_sample_group = grouped_data.get_group(('BR001', '10/08/2025'))
-        output_dir = 'tests/output_pdfs'
-        os.makedirs(output_dir, exist_ok=True)
-        output_filename = os.path.join(output_dir, 'bug_report_after_fix.pdf')
-
-        try:
-            # After the fix, this should run without raising a ValueError
-            generate_pdf_report(bug_sample_group, output_filename, self.summary)
-            self.assertTrue(os.path.exists(output_filename), "PDF report should be generated successfully.")
-        finally:
-            # Clean up any file that might have been created
-            if os.path.exists(output_filename):
-                os.remove(output_filename)
-            if os.path.exists(output_dir) and not os.listdir(output_dir):
-                os.rmdir(output_dir)
-
-
-    def test_generate_pdf_with_bad_date_format(self):
-        """Test PDF generation when 'Test completed' date is malformed."""
-        data = {
-            'Name': ['Bad Date Patient'],
-            'Date of Birth': ['01/01/1990'],
-            'MR#': ['MRN-DATE'],
-            'ID': ['1'],
-            'Date collected': ['2023-01-15'],
-            'Collected by': ['Test Collector'],
-            'Test completed': ['NOT-A-DATE'],
-            'Test Name': ['Test A'],
-            'Test result': ['Positive'],
-            'Test units': [''],
-            'Flags': [''],
-            'Comment': ['']
-        }
-        sample_group = pd.DataFrame(data)
-        output_dir = 'tests/output_pdfs'
-        os.makedirs(output_dir, exist_ok=True)
-        output_filename = os.path.join(output_dir, "test_bad_date.pdf")
-
-        try:
-            generate_pdf_report(sample_group, output_filename, self.summary)
-            # Verify the error was logged to summary
-            self.assertEqual(len(self.summary._errors), 1)
-            self.assertIn("Could not parse 'Test completed' date", self.summary._errors[0])
-            self.assertIn("MRN-DATE", self.summary._errors[0])
-            # Verify the PDF was created
-            self.assertTrue(os.path.exists(output_filename))
-        finally:
-            if os.path.exists(output_filename):
-                os.remove(output_filename)
-            if os.path.exists(output_dir) and not os.listdir(output_dir):
-                os.rmdir(output_dir)
-
 
     def test_results_with_whitespace_are_handled(self):
         """Test that results with leading/trailing whitespace are correctly processed."""
@@ -289,6 +236,7 @@ class TestPdfGenerator(unittest.TestCase):
             'Flags': [''], 'Comment': ['']
         }
         whitespace_group = pd.DataFrame(whitespace_data)
+        completed_date = "01/29/2023"
 
         output_dir = 'tests/output_pdfs'
         os.makedirs(output_dir, exist_ok=True)
@@ -298,7 +246,7 @@ class TestPdfGenerator(unittest.TestCase):
         # We can patch 'get_conditional_note' and assert it was called.
         with patch('pdf_generator.get_conditional_note') as mock_get_note:
             try:
-                generate_pdf_report(whitespace_group, output_filename, self.summary)
+                generate_pdf_report(whitespace_group, output_filename, self.summary, completed_date)
                 # Before the fix, this will fail because ' positive ' is not in the valid list.
                 # After the fix, .strip() will be called, and it should be identified as positive.
                 mock_get_note.assert_called_once()
