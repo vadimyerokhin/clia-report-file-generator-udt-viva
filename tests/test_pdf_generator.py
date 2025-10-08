@@ -2,6 +2,7 @@ import unittest
 import os
 import sys
 import pandas as pd
+from io import StringIO
 from reportlab.platypus import Paragraph, Table, Spacer
 
 # Add the src directory to the Python path
@@ -228,6 +229,46 @@ class TestPdfGenerator(unittest.TestCase):
             self.assertTrue(os.path.exists(output_filename), "PDF report should be generated successfully.")
         finally:
             # Clean up any file that might have been created
+            if os.path.exists(output_filename):
+                os.remove(output_filename)
+            if os.path.exists(output_dir):
+                os.rmdir(output_dir)
+
+
+    def test_generate_pdf_with_bad_date_format(self):
+        """Test PDF generation when 'Test completed' date is malformed."""
+        data = {
+            'Name': ['Bad Date Patient'],
+            'Date of Birth': ['01/01/1990'],
+            'MR#': ['MRN-DATE'],
+            'ID': ['1'],
+            'Date collected': ['2023-01-15'],
+            'Collected by': ['Test Collector'],
+            'Test completed': ['NOT-A-DATE'],
+            'Test Name': ['Test A'],
+            'Test result': ['Positive'],
+            'Test units': [''],
+            'Flags': [''],
+            'Comment': ['']
+        }
+        sample_group = pd.DataFrame(data)
+        output_dir = 'tests/output_pdfs'
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, "test_bad_date.pdf")
+
+        # Capture stdout to check for the warning message
+        captured_output = StringIO()
+        sys.stdout = captured_output
+
+        try:
+            generate_pdf_report(sample_group, output_filename)
+            sys.stdout = sys.__stdout__  # Restore stdout
+            # Verify the warning message
+            self.assertIn("Warning: Could not parse 'Test completed' date for patient MR# MRN-DATE", captured_output.getvalue())
+            # Verify the PDF was created
+            self.assertTrue(os.path.exists(output_filename))
+        finally:
+            sys.stdout = sys.__stdout__  # Ensure stdout is restored even if test fails
             if os.path.exists(output_filename):
                 os.remove(output_filename)
             if os.path.exists(output_dir):
