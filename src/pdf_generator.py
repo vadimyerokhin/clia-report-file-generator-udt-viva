@@ -186,8 +186,18 @@ def get_info_tables(patient_info, sample_group):
     # --- Specimen Information Block ---
     specimen_header = Paragraph("Specimen Information", info_header_style)
     # Derive completed date
-    latest_completion_ts = pd.to_datetime(sample_group['Test completed'], format='%m/%d/%Y %I:%M:%S %p').max()
-    completed_date = latest_completion_ts.strftime('%m/%d/%Y')
+    try:
+        # Let pandas infer the datetime format automatically
+        latest_completion_ts = pd.to_datetime(sample_group['Test completed']).max()
+        completed_date = latest_completion_ts.strftime('%m/%d/%Y')
+    except (ValueError, TypeError) as e:
+        # If parsing fails, use the original string and print a warning
+        # We take the first available 'Test completed' value as a fallback representation
+        raw_date = sample_group['Test completed'].iloc[0] if not sample_group['Test completed'].empty else "N/A"
+        mrn = patient_info['MR#']
+        print(f"Warning: Could not parse 'Test completed' date for patient MR# {mrn}. Using original value. Error: {e}")
+        # Fallback to using the date part of the original string
+        completed_date = str(raw_date).split(' ')[0]
 
     specimen_data = [
         [Paragraph("Specimen Type:", patient_bold_style), Paragraph("Urine", patient_style)],
