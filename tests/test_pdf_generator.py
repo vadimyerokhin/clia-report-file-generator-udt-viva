@@ -3,6 +3,7 @@ import os
 import sys
 import pandas as pd
 from io import StringIO
+from unittest.mock import patch
 from reportlab.platypus import Paragraph, Table, Spacer
 
 # Add the src directory to the Python path
@@ -273,6 +274,39 @@ class TestPdfGenerator(unittest.TestCase):
                 os.remove(output_filename)
             if os.path.exists(output_dir):
                 os.rmdir(output_dir)
+
+
+    def test_results_with_whitespace_are_handled(self):
+        """Test that results with leading/trailing whitespace are correctly processed."""
+        # Create data with whitespace in the 'Test result'
+        whitespace_data = {
+            'Type': ['Patient'], 'ID': [95], 'Date collected': ['2023-01-29'],
+            'Name': ['Whitespace Patient'], 'MR#': ['MRN995'], 'Date of Birth': ['01/01/1990'],
+            'Collected by': ['Tester'], 'Test completed': ['01/29/2023 12:00:00 PM'],
+            'Test Name': ['Test E'], 'Test result': [' Positive '], 'Test units': ['ng/mL'],
+            'Flags': [''], 'Comment': ['']
+        }
+        whitespace_group = pd.DataFrame(whitespace_data)
+
+        output_dir = 'tests/output_pdfs'
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, 'whitespace_report.pdf')
+
+        # We want to check if the conditional note for positive results is added.
+        # We can patch 'get_conditional_note' and assert it was called.
+        with patch('pdf_generator.get_conditional_note') as mock_get_note:
+            try:
+                generate_pdf_report(whitespace_group, output_filename)
+                # Before the fix, this will fail because ' positive ' is not in the valid list.
+                # After the fix, .strip() will be called, and it should be identified as positive.
+                mock_get_note.assert_called_once()
+            finally:
+                if os.path.exists(output_filename):
+                    os.remove(output_filename)
+                # This rmdir might fail if other tests run async and create files,
+                # so we check if it's empty first.
+                if os.path.exists(output_dir) and not os.listdir(output_dir):
+                    os.rmdir(output_dir)
 
 
 if __name__ == '__main__':
