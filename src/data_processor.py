@@ -62,13 +62,16 @@ def load_and_process_data(file_path, summary):
     return grouped_samples
 
 if __name__ == '__main__':  # pragma: no cover
+    from run_summary import RunSummary
     # This is for testing purposes to ensure the data processing works as expected.
     input_file = 'data/Test_Data.csv'
-    processed_data = load_and_process_data(input_file)
+    summary = RunSummary()
+    processed_data = load_and_process_data(input_file, summary)
 
     if processed_data:
         print(f"Successfully loaded and processed the data from {input_file}.")
         print(f"Found {len(processed_data)} unique patient samples.")
-        for (sample_id, date_collected), sample_group in processed_data:
+        for (mrn, date_collected), sample_group in processed_data:
             patient_name = sample_group['Name'].iloc[0]
-            print(f"  - Sample ID: {sample_id}, Date: {date_collected}, Patient: {patient_name}, Rows: {len(sample_group)}")
+            print(f"  - MR#: {mrn}, Date: {date_collected}, Patient: {patient_name}, Rows: {len(sample_group)}")
+    summary.print_summary()
