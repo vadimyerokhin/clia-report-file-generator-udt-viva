@@ -3,6 +3,7 @@ import argparse
 import pandas as pd
 from data_processor import load_and_process_data
 from pdf_generator import generate_pdf_report
+from utils import sanitize_filename
 
 def main(input_file, output_dir):
     """
@@ -29,7 +30,7 @@ def main(input_file, output_dir):
     for (sample_id, date_collected), sample_group in grouped_samples:
         # Get patient info for filename
         patient_info = sample_group.iloc[0]
-        patient_name = patient_info['Name'].replace(' ', '-')
+        patient_name = sanitize_filename(patient_info['Name'])
         mrn = patient_info['MR#']
 
         # Format collection date for filename (YYYY-MM-DD)
