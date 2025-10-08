@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dependencies
+venv/
+env/
+.env
+
+# Output directories
+output_pdfs/
+output_reports/
+cli_output/
+final_test_output/

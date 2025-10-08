@@ -1,0 +1,25 @@
+Type,Request type,ID,Name,MR#,Sample type,Date of Birth,Sex,Physician,Category,Tested by,Comment,Collected by,Date collected,Test Name,Test abbreviation,Test code,Test revision,Test result,Calculated result,Test units,Flags,Test completed
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Amphetamines 500,AM5,1004,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Barbiturates,BA5,1005,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Benzodiazepines 200,BZ2,1006,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Buprenorphine 5,BU5,1007,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Cocaine 150,CO1,1008,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Fentanyl 1,FTL1,1009,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Marijuana Metabolite 50,THC50,1010,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Methadone 300,MTD3,1011,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Opiates 300,OP3,1012,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,Oxycodone 100,OXY1,1013,0,Negative,,,-,10/6/2025 3:59:35 PM
+Patient,Routine,1,THOMAS ARNETT,ARNETT-T-2002,Urine,9/23/2002,Male,,,admin,,TP,10/2/2025,pH,PH,1014,0,6.0,,result,res,10/6/2025 3:59:35 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Amphetamines 500,AM5,1004,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Barbiturates,BA5,1005,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Benzodiazepines 200,BZ2,1006,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Buprenorphine 5,BU5,1007,0,Positive,,,+,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Cocaine 150,CO1,1008,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Fentanyl 1,FTL1,1009,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Marijuana Metabolite 50,THC50,1010,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Methadone 300,MTD3,1011,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Opiates 300,OP3,1012,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,Oxycodone 100,OXY1,1013,0,Negative,,,-,10/6/2025 4:23:00 PM
+Patient,Routine,5,WILLIAM COX,COX-W-1979,Urine,7/6/1979,Male,,,admin,,JC,10/3/2025,pH,PH,1014,0,5.5,,result,res,10/6/2025 4:23:00 PM
+Control,QC,1,QC1,,,QC,,,admin,,,,,Control,,,10/6/2025 3:50:00 PM
+Calibrator,Cal,1,Cal1,,,Cal,,,admin,,,,,Calibrator,,,10/6/2025 3:45:00 PM
