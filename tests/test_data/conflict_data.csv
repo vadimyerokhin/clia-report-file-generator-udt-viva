@@ -1,0 +1,6 @@
+ID,Date collected,Name,Date of Birth,MR#,Type,Collected by,Test completed,Test Name,Test result,Test units,Flags,Comment
+1,2023-01-15,John Doe,1990-05-20,MRN001,Patient,Nurse Joy,01/15/2023 02:30:00 PM,Opiates,Negative,ng/mL,,
+6,2023-01-20,Conflict Patient,1995-02-22,MRN006,Patient,Dr. Strangelove,01/20/2023 09:00:00 AM,Cocaine,Positive,ng/mL,H,
+6,2023-01-20,Conflict Patient,1995-02-22,MRN006,Patient,Dr. Strangelove,01/20/2023 09:00:00 AM,Opiates,Negative,ng/mL,,
+7,2023-01-20,Conflict Patient,1995-02-22,MRN006,Patient,Dr. Strangelove,01/20/2023 09:15:00 AM,THC,Positive,ng/mL,H,
+2,2023-01-16,Jane Smith,1985-11-12,MRN002,Patient,Dr. Feelgood,01/16/2023 03:00:00 PM,Amphetamines,Negative,ng/mL,,

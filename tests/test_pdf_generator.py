@@ -1,10 +1,14 @@
 import unittest
 import os
+import sys
 import pandas as pd
 from reportlab.platypus import Paragraph, Table, Spacer
 
-from src.data_processor import load_and_process_data
-from src.pdf_generator import (
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
+from data_processor import load_and_process_data
+from pdf_generator import (
     get_lab_header,
     get_report_title,
     get_info_tables,
@@ -24,8 +28,8 @@ class TestPdfGenerator(unittest.TestCase):
         cls.good_csv_path = os.path.join(cls.test_data_dir, 'sample_data.csv')
 
         grouped_data = load_and_process_data(cls.good_csv_path)
-        cls.positive_sample_group = grouped_data.get_group((1, '2023-01-15'))
-        cls.negative_sample_group = grouped_data.get_group((2, '2023-01-16'))
+        cls.positive_sample_group = grouped_data.get_group(('MRN001', '2023-01-15'))
+        cls.negative_sample_group = grouped_data.get_group(('MRN002', '2023-01-16'))
         cls.patient_info_positive = cls.positive_sample_group.iloc[0]
         cls.patient_info_negative = cls.negative_sample_group.iloc[0]
 
