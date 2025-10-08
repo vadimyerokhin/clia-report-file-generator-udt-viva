@@ -14,7 +14,7 @@ from reportlab.lib.units import inch
 import pandas as pd
 from datetime import datetime
 
-def generate_pdf_report(sample_group, output_filename, summary):
+def generate_pdf_report(sample_group, output_filename, summary, completed_date):
     """Generates and saves a complete PDF report for a single patient sample.
 
     This function orchestrates the creation of a PDF document by assembling
@@ -28,6 +28,8 @@ def generate_pdf_report(sample_group, output_filename, summary):
         output_filename (str): The path (including filename) where the
             generated PDF report will be saved.
         summary (RunSummary): An instance of the RunSummary class for logging.
+        completed_date (str): The pre-formatted 'Test Completed Date' for the
+            report.
     """
     doc = SimpleDocTemplate(output_filename, pagesize=letter,
                             rightMargin=inch, leftMargin=inch,
@@ -61,8 +63,7 @@ def generate_pdf_report(sample_group, output_filename, summary):
     story.append(Spacer(1, 0.2 * inch))
 
     # --- 3. Patient and Specimen Info ---
-    # We pass the original sample_group to ensure 'Test Completed Date' is accurate
-    story.extend(get_info_tables(patient_info, sample_group, summary))
+    story.extend(get_info_tables(patient_info, summary, completed_date))
     story.append(Spacer(1, 0.2 * inch))
 
     # --- 4. Conditional Positive Note ---
@@ -141,7 +142,7 @@ def get_report_title():
     title = Paragraph("urine drug test results", title_style)
     return title
 
-def get_info_tables(patient_info, sample_group, summary):
+def get_info_tables(patient_info, summary, completed_date):
     """Creates the patient and specimen information tables.
 
     This function constructs two formatted tables: one for patient demographics
@@ -152,9 +153,9 @@ def get_info_tables(patient_info, sample_group, summary):
         patient_info (pd.Series): A pandas Series containing the demographic
             information for the patient. It's expected to be the first row
             of the sample group.
-        sample_group (pd.DataFrame): The DataFrame for the entire sample, used
-            to derive the 'Test Completed Date'.
         summary (RunSummary): An instance of the RunSummary class for logging.
+        completed_date (str): The pre-formatted 'Test Completed Date' to be
+            displayed in the specimen information table.
 
     Returns:
         list: A list of ReportLab Flowables, including headers and tables for
@@ -186,21 +187,6 @@ def get_info_tables(patient_info, sample_group, summary):
 
     # --- Specimen Information Block ---
     specimen_header = Paragraph("Specimen Information", info_header_style)
-    # Derive completed date
-    try:
-        # Let pandas infer the datetime format automatically
-        latest_completion_ts = pd.to_datetime(sample_group['Test completed']).max()
-        completed_date = latest_completion_ts.strftime('%m/%d/%Y')
-    except (ValueError, TypeError) as e:
-        # If parsing fails, use the original string and log a warning
-        raw_date = sample_group['Test completed'].iloc[0] if not sample_group['Test completed'].empty else "N/A"
-        mrn = patient_info['MR#']
-        summary.log_error(
-            f"Patient MR# {mrn}",
-            f"Could not parse 'Test completed' date ('{raw_date}'). Using fallback. Error: {e}"
-        )
-        # Fallback to using the date part of the original string
-        completed_date = str(raw_date).split(' ')[0]
 
     specimen_data = [
         [Paragraph("Specimen Type:", patient_bold_style), Paragraph("Urine", patient_style)],
@@ -280,28 +266,37 @@ def get_results_table(sample_group):
 
 if __name__ == '__main__':  # pragma: no cover
     # This block is for testing the PDF generation directly.
-    # We will need to load the data first.
     from data_processor import load_and_process_data
+    from run_summary import RunSummary
+    import os
 
+    summary = RunSummary()
     input_file = 'data/Test_Data.csv'
-    grouped_samples = load_and_process_data(input_file)
+    grouped_samples = load_and_process_data(input_file, summary)
 
     if grouped_samples:
         print("Generating test PDFs for each sample...")
-        output_dir = 'output_pdfs'
-        import os
+        output_dir = 'output_pdfs_test'
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        for (sample_id, date_collected), sample_group in grouped_samples:
-            patient_name = sample_group['Name'].iloc[0].replace(' ', '-')
-            mrn = sample_group['MR#'].iloc[0]
+        for (mrn, date_collected), sample_group in grouped_samples:
+            patient_info = sample_group.iloc[0]
+            patient_name = str(patient_info['Name']).replace(' ', '-')
             collection_date = pd.to_datetime(date_collected).strftime('%Y-%m-%d')
+
+            # Calculate completed date for the test run
+            try:
+                latest_completion_ts = pd.to_datetime(sample_group['Test completed']).max()
+                completed_date_for_pdf = latest_completion_ts.strftime('%m/%d/%Y')
+            except (ValueError, TypeError):
+                raw_date = sample_group['Test completed'].iloc[0] if not sample_group['Test completed'].empty else "N/A"
+                completed_date_for_pdf = str(raw_date).split(' ')[0]
 
             output_filename = f"{output_dir}/{patient_name}_{mrn}_{collection_date}.pdf"
 
             print(f"  - Generating report for {patient_name}...")
-            generate_pdf_report(sample_group, output_filename)
+            generate_pdf_report(sample_group, output_filename, summary, completed_date_for_pdf)
             print(f"    ...saved to {output_filename}")
 
         print("Test PDF generation complete.")

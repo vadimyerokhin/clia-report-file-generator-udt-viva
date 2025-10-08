@@ -64,7 +64,9 @@ class TestResultFiltering(unittest.TestCase):
         jane_doe_sample = next((group for (mrn, _), group in grouped_samples if mrn == 'DOE-J-1985'), None)
         self.assertIsNotNone(jane_doe_sample, "Test sample for 'JANE DOE' not found.")
 
-        generate_pdf_report(jane_doe_sample, self.output_filename, self.summary)
+        # A fixed date is fine here since we are only testing filtering logic.
+        completed_date = "01/24/2023"
+        generate_pdf_report(jane_doe_sample, self.output_filename, self.summary, completed_date)
 
         # Check that the invalid result was logged to the summary object
         self.assertIn('DOE-J-1985', self.summary._invalid_results)
@@ -80,7 +82,8 @@ class TestResultFiltering(unittest.TestCase):
     @patch('src.pdf_generator.get_results_table')
     def test_filtering_with_no_valid_results(self, mock_get_results_table):
         """Test that when no results are valid, the results table is not generated."""
-        generate_pdf_report(self.no_valid_results_df, self.output_filename, self.summary)
+        completed_date = "02/01/2023"
+        generate_pdf_report(self.no_valid_results_df, self.output_filename, self.summary, completed_date)
 
         # The results table should not be created if there are no valid results
         mock_get_results_table.assert_not_called()
@@ -88,7 +91,8 @@ class TestResultFiltering(unittest.TestCase):
     @patch('src.pdf_generator.get_results_table')
     def test_case_insensitive_filtering(self, mock_get_results_table):
         """Test that filtering is case-insensitive for 'Positive' and 'Negative'."""
-        generate_pdf_report(self.case_insensitive_df, self.output_filename, self.summary)
+        completed_date = "02/01/2023"
+        generate_pdf_report(self.case_insensitive_df, self.output_filename, self.summary, completed_date)
 
         mock_get_results_table.assert_called_once()
         filtered_df = mock_get_results_table.call_args[0][0]
@@ -99,7 +103,8 @@ class TestResultFiltering(unittest.TestCase):
     @patch('src.pdf_generator.get_results_table')
     def test_mixed_data_types_in_result_column(self, mock_get_results_table):
         """Test filtering with mixed data types in the 'Test result' column."""
-        generate_pdf_report(self.mixed_types_df, self.output_filename, self.summary)
+        completed_date = "02/01/2023"
+        generate_pdf_report(self.mixed_types_df, self.output_filename, self.summary, completed_date)
 
         mock_get_results_table.assert_called_once()
         filtered_df = mock_get_results_table.call_args[0][0]

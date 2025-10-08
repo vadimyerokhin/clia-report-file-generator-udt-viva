@@ -12,25 +12,24 @@ from pdf_generator import generate_pdf_report
 from utils import sanitize_filename
 from run_summary import RunSummary
 
-def main(input_file, output_dir):
+def main(input_file, output_dir, organize_by=None):
     """Drives the PDF report generation process from start to finish.
 
-    This function takes a path to an input CSV file and an output directory.
-    It reads the data, processes and groups it by patient sample, and then
-    iterates through each group to generate a formatted PDF report, which is
-    saved in the specified output directory.
+    This function orchestrates the data processing and PDF generation. It can
+    also organize the output files into subdirectories based on criteria like
+    collection date, tested date, or MRN.
 
     Args:
-        input_file (str): The full path to the input CSV file containing the
-            laboratory test data.
-        output_dir (str): The path to the directory where the generated PDF
-            report files will be saved. The directory will be created if it
-            does not exist.
+        input_file (str): The full path to the input CSV file.
+        output_dir (str): The path to the base directory for saving reports.
+        organize_by (str, optional): The criterion for organizing reports into
+            subdirectories. Accepted values: 'collection-date', 'tested-date',
+            'mrn'. Defaults to None (flat structure).
     """
     summary = RunSummary()
     summary.set_output_dir(output_dir)
 
-    # Ensure the output directory exists
+    # Ensure the base output directory exists
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -97,21 +96,53 @@ def main(input_file, output_dir):
             collection_date_obj = pd.to_datetime(date_collected)
             collection_date_str = collection_date_obj.strftime('%Y-%m-%d')
         except Exception:
-            # Log a failure and skip this group
             error_msg = f"The date '{date_collected}' in the 'Date collected' column could not be parsed."
             summary.log_failure(f"MR# {mrn}", error_msg)
             continue
 
-        # Construct the output filename
+        # --- Calculate Test Completed Date ---
+        try:
+            latest_completion_ts = pd.to_datetime(sample_group['Test completed']).max()
+            completed_date_str = latest_completion_ts.strftime('%Y-%m-%d')
+            completed_date_for_pdf = latest_completion_ts.strftime('%m/%d/%Y')
+        except (ValueError, TypeError) as e:
+            raw_date = sample_group['Test completed'].iloc[0] if not sample_group['Test completed'].empty else "N/A"
+            summary.log_error(
+                f"Patient MR# {mrn}",
+                f"Could not parse 'Test completed' date ('{raw_date}'). Using fallback. Error: {e}"
+            )
+            completed_date_str = "unknown-date"
+            completed_date_for_pdf = str(raw_date).split(' ')[0]
+
+        # --- Determine the final output directory based on organization ---
+        final_output_dir = output_dir
+        if organize_by:
+            organize_by = organize_by.lower()
+            sub_dir_name = ''
+            if organize_by == 'collection-date':
+                sub_dir_name = collection_date_str
+            elif organize_by == 'tested-date':
+                sub_dir_name = completed_date_str
+            elif organize_by == 'mrn':
+                sub_dir_name = f"MRN_{mrn}"
+
+            if sub_dir_name:
+                final_output_dir = os.path.join(output_dir, sub_dir_name)
+
+        # Ensure the final output directory exists
+        if not os.path.exists(final_output_dir):
+            os.makedirs(final_output_dir)
+
+        # Construct the output filename and path
         output_filename = f"{patient_name}_{mrn}_{collection_date_str}.pdf"
-        output_path = os.path.join(output_dir, output_filename)
+        output_path = os.path.join(final_output_dir, output_filename)
 
         selected_sample_id = sample_group['ID'].iloc[0]
         print(f"  - Generating report for {patient_info['Name']} (Sample ID: {selected_sample_id})...")
 
         try:
             # Step 3: Generate the PDF
-            generate_pdf_report(sample_group, output_path, summary)
+            generate_pdf_report(sample_group, output_path, summary, completed_date_for_pdf)
             summary.log_success()
             print(f"    ...Successfully saved to {output_path}")
         except Exception as e:
@@ -132,6 +163,12 @@ if __name__ == '__main__':  # pragma: no cover
         required=True,
         help="Directory to save the generated PDF reports."
     )
+    parser.add_argument(
+        '--organize-by',
+        choices=['collection-date', 'tested-date', 'mrn'],
+        default=None,
+        help="Organize PDFs into subdirectories by the specified criterion."
+    )
 
     args = parser.parse_args()
-    main(args.input, args.output)
+    main(args.input, args.output, args.organize_by)
