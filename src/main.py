@@ -9,6 +9,7 @@ import argparse
 import pandas as pd
 from data_processor import load_and_process_data
 from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
+from billing_generator import generate_billing_file
 from utils import sanitize_filename
 from run_summary import RunSummary
 
@@ -109,6 +110,19 @@ def generate_reports(input_file, output_dir, organize_by, summary, progress_call
             summary.log_failure(f"MR# {mrn} / Sample {selected_sample_id}", f"Failed to generate PDF: {e}")
             if progress_callback:
                 progress_callback(f"    ...Error generating PDF for sample {selected_sample_id}")
+
+    # Generate billing file after all PDFs are processed
+    if progress_callback:
+        progress_callback("\nGenerating medical billing file (CPT 80307)...")
+
+    try:
+        billing_file_path = generate_billing_file(grouped_samples, output_dir, summary)
+        if progress_callback:
+            progress_callback(f"Successfully generated billing file: {billing_file_path}")
+    except Exception as e:
+        if progress_callback:
+            progress_callback(f"Error generating billing file: {e}")
+        summary.log_error("Billing File", f"Failed to generate billing file: {e}")
 
 def main(input_file, output_dir, organize_by=None):
     """Drives the PDF report generation process from start to finish for the CLI."""

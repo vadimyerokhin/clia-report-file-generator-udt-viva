@@ -37,8 +37,8 @@ class TestMain(unittest.TestCase):
         expected_filename = "Conflict-Patient_MRN006_2023-01-20.pdf"
         output_files = os.listdir(self.output_dir)
 
-        # There should be 4 reports in total: one for MRN001, one for MRN002, one for MRN006, and the summary
-        self.assertEqual(len(output_files), 4, "Should generate four reports in total.")
+        # There should be 5 files in total: one for MRN001, one for MRN002, one for MRN006, the summary, and billing file
+        self.assertEqual(len(output_files), 5, "Should generate five files in total.")
 
         # Check that the specific, user-selected report exists
         self.assertIn(expected_filename, output_files, "The PDF for the selected conflicted sample should be generated.")
@@ -87,9 +87,9 @@ class TestMain(unittest.TestCase):
         input_file = "tests/test_data/conflict_data.csv"
         main(input_file, self.output_dir, organize_by=None)
 
-        # The conflict patient should be skipped, but summary is still generated
+        # The conflict patient should be skipped, but summary and billing file are still generated
         output_files = os.listdir(self.output_dir)
-        self.assertEqual(len(output_files), 3)
+        self.assertEqual(len(output_files), 4)  # 2 PDFs + summary + billing
         self.assertNotIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
 
         # Check that the skip was logged
@@ -109,8 +109,11 @@ class TestMain(unittest.TestCase):
 
         try:
             main(malformed_date_file, self.output_dir, organize_by=None)
-            # The file should NOT be created
-            self.assertEqual(len(os.listdir(self.output_dir)), 0)
+            # Only billing file should be created (no PDFs due to malformed date)
+            self.assertEqual(len(os.listdir(self.output_dir)), 1)
+            # Verify it's the billing file
+            files = os.listdir(self.output_dir)
+            self.assertTrue(any(f.startswith('billing_80307_') for f in files))
             # The error should be logged
             mock_summary_instance.log_failure.assert_called_once_with(
                 "MR# MRN-DATE", "The date 'NOT-A-DATE' in the 'Date collected' column could not be parsed."
@@ -136,8 +139,10 @@ class TestMain(unittest.TestCase):
             "MR# MRN001 / Sample 1", "Failed to generate PDF: PDF Generation Failed"
         )
 
-        # No files should be created because the mock always raises an exception
-        self.assertEqual(len(os.listdir(self.output_dir)), 0)
+        # Only billing file should be created (no PDFs because the mock always raises an exception)
+        self.assertEqual(len(os.listdir(self.output_dir)), 1)
+        files = os.listdir(self.output_dir)
+        self.assertTrue(any(f.startswith('billing_80307_') for f in files))
 
     def test_organization_by_collection_date(self):
         """Test that PDFs are organized by collection date."""
@@ -253,8 +258,8 @@ class TestMain(unittest.TestCase):
         # Only the non-conflicting reports should be generated
         output_files = os.listdir(self.output_dir)
         self.assertNotIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
-        # 2 reports, no summary pdf because positives were in the skipped sample
-        self.assertEqual(len(output_files), 2)
+        # 2 PDFs + billing file (no summary pdf because positives were in the skipped sample)
+        self.assertEqual(len(output_files), 3)
 
 
     @patch('builtins.input', side_effect=EOFError)
@@ -269,8 +274,8 @@ class TestMain(unittest.TestCase):
         # Only the non-conflicting reports should be generated
         output_files = os.listdir(self.output_dir)
         self.assertNotIn("Conflict-Patient_MRN006_2023-01-20.pdf", output_files)
-        # 2 reports, no summary pdf because positives were in the skipped sample
-        self.assertEqual(len(output_files), 2)
+        # 2 PDFs + billing file (no summary pdf because positives were in the skipped sample)
+        self.assertEqual(len(output_files), 3)
 
 
     def test_no_conflict_handler(self):
@@ -279,8 +284,8 @@ class TestMain(unittest.TestCase):
         summary = RunSummary()
         # When no handler is provided, the conflicting sample is skipped.
         generate_reports(input_file, self.output_dir, None, summary, progress_callback=None, conflict_handler=None)
-        # 2 reports + summary
-        self.assertEqual(len(os.listdir(self.output_dir)), 3)
+        # 2 PDFs + summary + billing file
+        self.assertEqual(len(os.listdir(self.output_dir)), 4)
 
     @patch('main.RunSummary')
     def test_malformed_test_completed_date(self, mock_summary_class):
