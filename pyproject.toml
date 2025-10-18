@@ -1,0 +1,13 @@
+[project]
+name = "clia-report-file-generator-udt-viva"
+version = "0.1.0"
+description = "PDF report generation from result CSV files from the machine"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pandas>=2.3.3",
+    "pyside6>=6.10.0",
+    "reportlab>=4.4.4",
+]
+[project.scripts]
+gui = "src/gui.py"
