@@ -23,4 +23,5 @@ output_pdfs/
 temp_test_output/
 
 # macOS system files
+.DS_Store.serena/
 .DS_Store
