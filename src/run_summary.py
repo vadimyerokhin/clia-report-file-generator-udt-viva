@@ -56,13 +56,24 @@ class RunSummary:
         """Logs a test result that was filtered out as invalid."""
         self._invalid_results[mrn].append(f"{test_name}: '{result}'")
 
-    def log_positive_result(self, mrn, patient_name, test_name, collection_date):
-        """Logs a positive test result for the summary report."""
+    def log_positive_result(self, mrn, patient_name, test_name, collection_date, dob="", test_completed_date=""):
+        """Logs a positive test result for the summary report.
+
+        Args:
+            mrn: Medical record number
+            patient_name: Patient's full name
+            test_name: Name of the positive test
+            collection_date: Date sample was collected
+            dob: Date of birth (optional)
+            test_completed_date: Date test was completed (optional)
+        """
         self._positive_results.append({
             "mrn": mrn,
             "patient_name": patient_name,
             "test_name": test_name,
-            "collection_date": collection_date
+            "collection_date": collection_date,
+            "dob": dob,
+            "test_completed_date": test_completed_date
         })
 
     def log_error(self, identifier, message):

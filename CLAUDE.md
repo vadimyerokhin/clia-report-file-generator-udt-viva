@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Python-based laboratory report PDF generator that processes CSV data files and generates professional CLIA-compliant urine drug test reports. Features both CLI and GUI interfaces with intelligent duplicate handling and result filtering.
+Python-based laboratory report generator that processes CSV data files and generates professional CLIA-compliant urine drug test reports. Features both CLI and GUI interfaces with intelligent duplicate handling, result filtering, and medical billing file generation. Supports multiple export formats through an extensible exporter framework.
 
 ## Development Commands
 
@@ -98,24 +98,50 @@ The application follows a pipeline architecture: **Data Ingestion → Validation
 - `print_summary()`: Formatted execution report with emoji indicators
 
 **gui.py** - UI layer (PySide6)
-- `MainWindow`: Main application window with file selection and organization options
+- `MainWindow`: Main application window with persistent configuration and enhanced UX
 - `Worker`: QThread-based background processor for non-blocking generation
 - `SelectSampleDialog`: Modal dialog for duplicate sample conflict resolution
+- `WelcomeScreen`: First-launch welcome dialog with feature overview
+- `DragDropLineEdit`: Enhanced file/folder input with drag-and-drop support
+- Features: persistent settings, recent files/directories, real-time validation, tooltips, status bar
+- Auto-saves configuration on close and before generation
+- Uses signal/slot pattern for thread-safe communication
 - Uses signal/slot pattern for thread-safe communication
 
 **utils.py** - Utilities
 - `sanitize_filename()`: Safe filename generation from patient names
+- `load_config()`: Loads configuration from config.yaml
+
+**exporter.py** - Export abstraction layer
+- `Exporter`: Abstract base class for report exporters
+- `PdfExporter`: PDF-specific implementation with callback support
+- Extensible design allows adding new export formats (Excel, CSV, etc.)
+
+**config_manager.py** - Configuration management layer
+- `ConfigManager` class: Persistent user settings and preferences
+- Cross-platform configuration storage (macOS, Linux, Windows)
+- Atomic save operations with corruption prevention
+- Recent files/directories tracking with automatic filtering
+- Configuration validation and automatic correction
+- Methods: `load_config()`, `save_config()`, `get()`, `set()`, `update()`, `reset_to_defaults()`, `add_recent_file()`, `add_recent_dir()`
+- Extensible design allows adding new export formats (Excel, CSV, etc.)
+
+**billing_generator.py** - Medical billing layer
+- `generate_billing_file()`: Creates CPT 80307 billing CSV files
+- `parse_patient_name()`: Parses full names into first/last components
+- Formats medical billing data for submission to billing systems
 
 ### Key Design Patterns
 
 **Dependency Injection for Extensibility:**
 ```python
 generate_reports(
-    input_file, output_dir, organize_by, summary,
+    input_file, output_dir, organize_by, summary, exporter,
     progress_callback=None,     # Injectable for CLI vs GUI
     conflict_handler=None       # Injectable for CLI vs GUI
 )
 ```
+The `exporter` parameter allows pluggable export formats (PDF, Excel, etc.) through the Exporter abstraction.
 
 **GroupBy-Based Processing:**
 Data is grouped by (MR#, Date collected) creating unique patient sample groups. Each group may contain multiple test results for the same visit.
@@ -163,9 +189,40 @@ Tests mirror the source structure in `tests/` directory:
 - **test_main.py**: End-to-end workflow, conflict resolution, organization options
 - **test_result_filtering.py**: Valid/invalid result handling
 - **test_run_summary.py**: Statistics tracking, logging, summary formatting
-- **test_utils.py**: Filename sanitization
+- **test_config_manager.py**: Configuration persistence, validation, recent files/directories
+- **test_billing_generator.py**: Medical billing file generation, name parsing
+- **test_utils.py**: Filename sanitization, configuration loading
+- **test_billing_generator.py**: Medical billing file generation, name parsing
 
 Test data located in `tests/test_data/` directory.
+
+## GUI Entry Points and Configuration
+
+### Running the GUI
+
+The application can be launched from the project root using the run_gui.py script.
+
+### Persistent Configuration
+
+The GUI automatically saves and restores user preferences across sessions in a cross-platform configuration file.
+
+Saved settings include: last used input file and output directory, organization preference, positive results summary checkbox state, window size and position, recent files and directories (up to 10 each), and welcome screen preference.
+
+Configuration features: auto-save on window close and before generation, graceful handling of missing or corrupted config files, atomic writes to prevent data corruption, cross-platform path handling, and automatic validation.
+
+### GUI Features
+
+- Drag and drop support for CSV files and folders
+- Recent files/directories quick access
+- Real-time input validation
+- Status bar with validation messages
+- Tooltips on all controls
+- Reset settings button
+- Welcome screen with feature overview
+- PDF preview of generated reports
+- Detailed progress tracking with formatted summary
+
+See GUI_ENHANCEMENTS.md for comprehensive documentation.
 
 ## Important Implementation Details
 
@@ -227,3 +284,23 @@ Current system uses callback pattern. To add new resolution strategies:
 1. Create handler function: `def handler(mrn, date_collected, unique_sample_ids) -> Optional[int]`
 2. Pass to `generate_reports()` as `conflict_handler` parameter
 3. Return 0-based index for selection, None/negative to skip
+
+### Adding New Export Formats
+The exporter framework allows easy addition of new formats:
+1. Create new class inheriting from `Exporter` in `exporter.py`
+2. Implement `export_report()` method with format-specific logic
+3. Instantiate and pass to `generate_reports()` as `exporter` parameter
+4. Example: `ExcelExporter`, `CsvExporter`, `JsonExporter`
+
+### Medical Billing Integration
+Billing file generation for CPT 80307 (presumptive drug screening):
+- Generated via `generate_billing_file()` in `billing_generator.py`
+- Creates CSV with fields: Last Name, First Name, DOB, Date of Service, CPT Code, MRN
+- Automatically parses patient names into first/last components
+- Validates required fields and handles missing data gracefully
+
+### Configuration System
+Optional `config.yaml` in project root for customization:
+- Loaded via `load_config()` in `utils.py`
+- Currently used for future extensibility
+- Returns empty dict if config file doesn't exist

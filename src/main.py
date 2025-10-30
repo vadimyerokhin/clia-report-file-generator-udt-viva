@@ -8,12 +8,13 @@ import os
 import argparse
 import pandas as pd
 from data_processor import load_and_process_data
-from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
+from pdf_generator import generate_positives_summary_pdf
 from billing_generator import generate_billing_file
-from utils import sanitize_filename
+from utils import sanitize_filename, load_config
 from run_summary import RunSummary
+from exporter import PdfExporter
 
-def generate_reports(input_file, output_dir, organize_by, summary, progress_callback=None, conflict_handler=None):
+def generate_reports(input_file, output_dir, organize_by, summary, exporter, progress_callback=None, conflict_handler=None):
     """
     Generates PDF reports based on the provided parameters. This function contains the core logic.
     """
@@ -102,7 +103,7 @@ def generate_reports(input_file, output_dir, organize_by, summary, progress_call
             progress_callback(f"  - Generating report for {patient_info['Name']} (Sample ID: {selected_sample_id})...")
 
         try:
-            generate_pdf_report(sample_group, output_path, summary, completed_date_for_pdf, input_file)
+            exporter.export_report(sample_group, output_path, summary, completed_date_for_pdf, input_file)
             summary.log_success()
             if progress_callback:
                 progress_callback(f"    ...Successfully saved to {output_path}")
@@ -124,9 +125,11 @@ def generate_reports(input_file, output_dir, organize_by, summary, progress_call
             progress_callback(f"Error generating billing file: {e}")
         summary.log_error("Billing File", f"Failed to generate billing file: {e}")
 
-def main(input_file, output_dir, organize_by=None):
+def main(argv=None):
     """Drives the PDF report generation process from start to finish for the CLI."""
+    config = load_config()
     summary = RunSummary()
+    exporter = PdfExporter()
 
     def cli_conflict_handler(mrn, date_collected, unique_sample_ids):
         print(f"\nConflict: Multiple sample records found for patient MR# {mrn} on {date_collected}.")
@@ -150,23 +153,34 @@ def main(input_file, output_dir, organize_by=None):
                 print("\nOperation cancelled by user.")
                 return None
 
-    generate_reports(input_file, output_dir, organize_by, summary, progress_callback=print, conflict_handler=cli_conflict_handler)
+    parser = argparse.ArgumentParser(description="Automated PDF Laboratory Report Generator")
+    parser.add_argument('-i', '--input', default=config.get('input_file'), help="Path to the input CSV file.")
+    parser.add_argument('-o', '--output', default=config.get('output_dir'), help="Directory to save the generated PDF reports.")
+    parser.add_argument('--organize-by', choices=['collection-date', 'tested-date', 'mrn'], default=config.get('organize_by'), help="Organize PDFs into subdirectories.")
+    parser.add_argument('--no-positive-summary', action='store_true', help="Disable generation of positive results summary PDF.")
 
-    # Generate the summary PDF of positive results
-    try:
-        generate_positives_summary_pdf(summary, output_dir)
-        if summary._positive_results:
-            print(f"Successfully generated positives summary PDF: {os.path.join(output_dir, 'positives_summary.pdf')}")
-    except Exception as e:
-        print(f"Error generating positives summary PDF: {e}")
+    args = parser.parse_args(argv)
+
+    if not args.input:
+        print("Error: Input file not specified in config.yaml or as a command-line argument.")
+        return
+
+    generate_reports(args.input, args.output, args.organize_by, summary, exporter, progress_callback=print, conflict_handler=cli_conflict_handler)
+
+    # Generate the summary PDF of positive results (if enabled)
+    generate_summary = config.get('generate_positive_summary', True) and not args.no_positive_summary
+    if generate_summary:
+        try:
+            print("\nGenerating positive results summary PDF...")
+            output_path = generate_positives_summary_pdf(summary, args.output, summary._total_samples)
+            print(f"Successfully generated positive results summary: {output_path}")
+        except Exception as e:
+            print(f"Error generating positive results summary PDF: {e}")
+            summary.log_error("Positive Summary PDF", str(e))
+    else:
+        print("\nPositive results summary generation disabled.")
 
     summary.print_summary()
 
 if __name__ == '__main__':  # pragma: no cover
-    parser = argparse.ArgumentParser(description="Automated PDF Laboratory Report Generator")
-    parser.add_argument('-i', '--input', required=True, help="Path to the input CSV file.")
-    parser.add_argument('-o', '--output', required=True, help="Directory to save the generated PDF reports.")
-    parser.add_argument('--organize-by', choices=['collection-date', 'tested-date', 'mrn'], default=None, help="Organize PDFs into subdirectories.")
-
-    args = parser.parse_args()
-    main(args.input, args.output, args.organize_by)
+    main()

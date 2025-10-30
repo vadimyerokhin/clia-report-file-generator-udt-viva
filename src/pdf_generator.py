@@ -81,7 +81,9 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
                 mrn=mrn,
                 patient_name=patient_info['Name'],
                 test_name=row['Test Name'],
-                collection_date=patient_info['Date collected']
+                collection_date=patient_info['Date collected'],
+                dob=str(patient_info['Date of Birth']) if pd.notna(patient_info['Date of Birth']) else "",
+                test_completed_date=completed_date
             )
 
     # --- 5. Test Results Table ---
@@ -328,65 +330,166 @@ if __name__ == '__main__':  # pragma: no cover
         print("Test PDF generation complete.")
 
 
-def generate_positives_summary_pdf(summary, output_dir):
-    """Generates a summary PDF of all positive results from the run.
+def generate_positives_summary_pdf(summary, output_dir, total_samples_processed=0):
+    """Generates a professionally formatted summary PDF of all positive results.
+
+    This function creates a CLIA-compliant summary report containing all positive
+    drug test results from the processing run. Results are grouped by patient visit
+    (same patient on same date) with multiple positive tests listed together.
 
     Args:
-        summary (RunSummary): The summary object containing the collected positive results.
-        output_dir (str): The directory to save the summary PDF in.
+        summary (RunSummary): The summary object containing collected positive results.
+        output_dir (str): The directory to save the summary PDF in (always root output_dir).
+        total_samples_processed (int): Total number of samples processed in the run.
+
+    Returns:
+        str: Path to the generated PDF file.
+
+    Raises:
+        Exception: If PDF generation fails, exception is logged but not raised.
     """
-    if not summary._positive_results:
-        return  # No positive results to report
+    # Generate timestamped filename
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+    output_filename = os.path.join(output_dir, f"Positive_Results_Summary_{timestamp}.pdf")
 
-    output_filename = os.path.join(output_dir, "positives_summary.pdf")
-    doc = SimpleDocTemplate(output_filename, pagesize=letter,
-                            rightMargin=inch, leftMargin=inch,
-                            topMargin=inch, bottomMargin=inch)
-    story = []
-    styles = getSampleStyleSheet()
+    try:
+        doc = SimpleDocTemplate(output_filename, pagesize=letter,
+                                rightMargin=inch, leftMargin=inch,
+                                topMargin=inch, bottomMargin=inch)
+        story = []
+        styles = getSampleStyleSheet()
 
-    # --- Title ---
-    title_style = ParagraphStyle('title_style', parent=styles['h1'], fontSize=14, alignment=TA_CENTER, fontName='Helvetica-Bold')
-    title = Paragraph("Summary of Positive Results", title_style)
-    story.append(title)
-    story.append(Spacer(1, 0.2 * inch))
+        # --- 1. CLIA Laboratory Header ---
+        story.extend(get_lab_header())
+        story.append(Spacer(1, 0.2 * inch))
 
-    # --- Introduction ---
-    intro_text = f"This report summarizes all <b>{len(summary._positive_results)}</b> positive results detected during the run."
-    intro_style = ParagraphStyle('intro_style', parent=styles['Normal'], alignment=TA_LEFT)
-    story.append(Paragraph(intro_text, intro_style))
-    story.append(Spacer(1, 0.2 * inch))
+        # --- 2. Report Title ---
+        title_style = ParagraphStyle('title_style', parent=styles['h1'],
+                                     fontSize=14, alignment=TA_CENTER,
+                                     fontName='Helvetica-Bold')
+        title = Paragraph("positive results summary report", title_style)
+        story.append(title)
+        story.append(Spacer(1, 0.3 * inch))
 
-    # --- Results Table ---
-    header = [
-        Paragraph("<b>Patient Name</b>"),
-        Paragraph("<b>MRN</b>"),
-        Paragraph("<b>Collection Date</b>"),
-        Paragraph("<b>Positive Test</b>")
-    ]
-    data = [header]
+        # --- 3. Check if there are positive results ---
+        if not summary._positive_results:
+            # Generate informational PDF when no positives
+            info_style = ParagraphStyle('info_style', parent=styles['Normal'],
+                                       fontSize=12, alignment=TA_CENTER)
+            info_text = f"<b>No positive results detected</b><br/><br/>" \
+                       f"Run Date: {datetime.now().strftime('%m/%d/%Y %H:%M')}<br/>" \
+                       f"Total Samples Processed: {total_samples_processed}<br/><br/>" \
+                       f"All test results were either negative or invalid."
+            story.append(Paragraph(info_text, info_style))
+            doc.build(story)
+            return output_filename
 
-    # Sort results for consistency
-    sorted_positives = sorted(summary._positive_results, key=lambda x: (x['patient_name'], x['mrn'], x['collection_date']))
+        # --- 4. Summary Statistics ---
+        unique_patients = len(set((r['patient_name'], r['mrn']) for r in summary._positive_results))
+        intro_style = ParagraphStyle('intro_style', parent=styles['Normal'],
+                                     fontSize=10, alignment=TA_LEFT)
+        intro_text = f"<b>Run Date:</b> {datetime.now().strftime('%m/%d/%Y %H:%M')}<br/>" \
+                    f"<b>Total Samples Processed:</b> {total_samples_processed}<br/>" \
+                    f"<b>Positive Results Found:</b> {len(summary._positive_results)}<br/>" \
+                    f"<b>Unique Patients with Positives:</b> {unique_patients}"
+        story.append(Paragraph(intro_text, intro_style))
+        story.append(Spacer(1, 0.2 * inch))
 
-    for result in sorted_positives:
-        data.append([
-            str(result['patient_name']),
-            str(result['mrn']),
-            str(result['collection_date']),
-            str(result['test_name'])
+        # --- 5. Group Results by Patient Visit ---
+        # Group by (patient_name, mrn, dob, collection_date, test_completed_date)
+        grouped = {}
+        for result in summary._positive_results:
+            # Handle missing DOB and dates
+            dob = result.get('dob', '') or 'N/A'
+            collection = result.get('collection_date', '') or 'Unknown Date'
+            completed = result.get('test_completed_date', '') or 'N/A'
+
+            key = (result['patient_name'], result['mrn'], dob, collection, completed)
+            if key not in grouped:
+                grouped[key] = {
+                    'patient_name': result['patient_name'],
+                    'mrn': result['mrn'],
+                    'dob': dob,
+                    'collection_date': collection,
+                    'test_completed_date': completed,
+                    'tests': []
+                }
+            grouped[key]['tests'].append(result['test_name'])
+
+        # --- 6. Build Results Table ---
+        table_header_style = ParagraphStyle('table_header', parent=styles['h2'],
+                                           fontName='Helvetica-Bold', fontSize=12,
+                                           alignment=TA_LEFT)
+        table_header = Paragraph("Positive Test Results", table_header_style)
+        story.append(table_header)
+        story.append(Spacer(1, 0.1 * inch))
+
+        header = [
+            Paragraph("<b>Patient Name</b>"),
+            Paragraph("<b>DOB</b>"),
+            Paragraph("<b>MRN</b>"),
+            Paragraph("<b>Collection Date</b>"),
+            Paragraph("<b>Test Completed</b>"),
+            Paragraph("<b>Positive Tests</b>")
+        ]
+        data = [header]
+
+        # Sort by patient name, then collection date
+        sorted_groups = sorted(grouped.items(),
+                              key=lambda x: (x[1]['patient_name'],
+                                           x[1]['collection_date'],
+                                           x[1]['mrn']))
+
+        for _, group_data in sorted_groups:
+            # Join multiple tests with commas
+            tests_str = ', '.join(group_data['tests'])
+
+            # Handle long test names with paragraph wrapping
+            tests_para = Paragraph(tests_str, styles['Normal'])
+
+            data.append([
+                group_data['patient_name'],
+                group_data['dob'],
+                str(group_data['mrn']),
+                group_data['collection_date'],
+                group_data['test_completed_date'],
+                tests_para
+            ])
+
+        # Create table with appropriate column widths
+        table = Table(data, colWidths=[1.5*inch, 0.9*inch, 0.8*inch, 1.0*inch, 1.0*inch, 1.3*inch],
+                     repeatRows=1)
+
+        table_style = TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), lightgrey),
+            ('TEXTCOLOR', (0,0), (-1,0), black),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 9),
+            ('BOTTOMPADDING', (0,0), (-1,0), 12),
+            ('TOPPADDING', (0,1), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,1), (-1,-1), 8),
+            ('GRID', (0,0), (-1,-1), 1, black)
         ])
+        table.setStyle(table_style)
+        story.append(table)
 
-    table = Table(data, colWidths=[2.0*inch, 1.5*inch, 1.5*inch, 1.5*inch], repeatRows=1)
-    style = TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), lightgrey),
-        ('TEXTCOLOR', (0,0), (-1,0), black),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 12),
-        ('GRID', (0,0), (-1,-1), 1, black)
-    ])
-    table.setStyle(style)
-    story.append(table)
+        # --- 7. Footer Note ---
+        story.append(Spacer(1, 0.3 * inch))
+        footer_style = ParagraphStyle('footer_style', parent=styles['Normal'],
+                                     fontSize=9, alignment=TA_LEFT,
+                                     fontName='Helvetica-Oblique')
+        footer_text = "<b>Note:</b> This is a presumptive screening test. " \
+                     "Positive results should be confirmed with a more specific confirmatory test. " \
+                     "This summary is for clinical review purposes only."
+        story.append(Paragraph(footer_text, footer_style))
 
-    doc.build(story)
+        # Build the PDF
+        doc.build(story)
+        return output_filename
+
+    except Exception as e:
+        error_msg = f"Failed to generate positive summary PDF: {e}"
+        summary.log_error("Positive Summary PDF", error_msg)
+        raise

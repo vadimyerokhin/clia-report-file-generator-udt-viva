@@ -4,6 +4,16 @@ It contains helper functions that are used across different modules, such as
 for sanitizing strings to be used as valid filenames.
 """
 import re
+import yaml
+import os
+
+def load_config():
+    """Loads the configuration from config.yaml."""
+    config_path = os.path.join(os.path.dirname(__file__), '..', 'config.yaml')
+    if not os.path.exists(config_path):
+        return {}
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
 
 def sanitize_filename(filename):
     """Sanitizes a string to create a valid and safe filename.
