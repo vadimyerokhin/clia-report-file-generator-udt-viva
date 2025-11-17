@@ -12,15 +12,17 @@ import pandas as pd
 try:
     from src.data_processor import load_and_process_data
     from src.pdf_generator import generate_pdf_report, generate_positives_summary_pdf
-    from src.utils import sanitize_filename, parse_collection_date, parse_completion_date
+    from src.utils import sanitize_filename, parse_collection_date, parse_completion_date, validate_output_directory
     from src.run_summary import RunSummary
     from src.config import POSITIVES_SUMMARY_FILENAME
+    from src.exceptions import InvalidPathError
 except ImportError:
     from data_processor import load_and_process_data
     from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
-    from utils import sanitize_filename, parse_collection_date, parse_completion_date
+    from utils import sanitize_filename, parse_collection_date, parse_completion_date, validate_output_directory
     from run_summary import RunSummary
     from config import POSITIVES_SUMMARY_FILENAME
+    from exceptions import InvalidPathError
 
 
 def cli_conflict_handler(mrn, date_collected, unique_sample_ids):
@@ -61,7 +63,8 @@ def generate_reports(
     organize_by: Optional[str],
     summary: RunSummary,
     progress_callback: Optional[Callable[[str], None]] = None,
-    conflict_handler: Optional[Callable[[str, str, list], Optional[int]]] = None
+    conflict_handler: Optional[Callable[[str, str, list], Optional[int]]] = None,
+    progress_update_callback: Optional[Callable[[int, int], None]] = None
 ) -> None:
     """Generates PDF reports based on the provided parameters.
 
@@ -73,13 +76,21 @@ def generate_reports(
         output_dir: Directory to save the generated PDF reports.
         organize_by: Method to organize output files ('collection-date', 'tested-date', 'mrn', or None).
         summary: RunSummary instance for tracking execution statistics.
-        progress_callback: Optional callback function for progress updates.
+        progress_callback: Optional callback function for progress text updates.
         conflict_handler: Optional callback for handling duplicate sample IDs.
+        progress_update_callback: Optional callback for numerical progress updates (current, total).
     """
     summary.set_output_dir(output_dir)
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    # Validate output directory early to fail fast if there are permission issues
+    try:
+        validate_output_directory(output_dir)
+    except InvalidPathError as e:
+        error_msg = f"Invalid output directory: {e}"
+        if progress_callback:
+            progress_callback(error_msg)
+        summary.log_error("Output directory", str(e))
+        raise
 
     grouped_samples = load_and_process_data(input_file, summary)
 
@@ -89,10 +100,11 @@ def generate_reports(
         return
 
     summary.set_total_samples(len(grouped_samples))
+    total_samples = len(grouped_samples)
     if progress_callback:
-        progress_callback(f"Found {len(grouped_samples)} unique patient groups. Generating reports...")
+        progress_callback(f"Found {total_samples} unique patient groups. Generating reports...")
 
-    for (mrn, date_collected), patient_group in grouped_samples:
+    for idx, ((mrn, date_collected), patient_group) in enumerate(grouped_samples, 1):
         sample_group = patient_group
         unique_sample_ids = patient_group['ID'].unique()
 
@@ -110,9 +122,21 @@ def generate_reports(
                     if progress_callback:
                         progress_callback(f"Skipping patient MR# {mrn} on {date_collected} due to user cancellation.")
                     continue
-            else: # Fallback to command-line prompt if no handler
-                # ... (existing input logic)
-                pass
+            else:  # Fallback when no conflict handler is provided
+                # Default to first sample but warn the user
+                selected_id = unique_sample_ids[0]
+                sample_group = patient_group[patient_group['ID'] == selected_id].copy()
+                warning_msg = (
+                    f"⚠️  Warning: Multiple samples found for MR# {mrn} on {date_collected}. "
+                    f"Sample IDs: {', '.join(map(str, unique_sample_ids))}. "
+                    f"Automatically selecting first sample: {selected_id}"
+                )
+                if progress_callback:
+                    progress_callback(warning_msg)
+                summary.log_error(
+                    f"MR# {mrn}",
+                    f"Multiple samples detected ({len(unique_sample_ids)} total). Auto-selected: {selected_id}"
+                )
 
         if sample_group is None or sample_group.empty:
             continue
@@ -153,14 +177,22 @@ def generate_reports(
         selected_sample_id = sample_group['ID'].iloc[0]
 
         if progress_callback:
-            progress_callback(f"  - Generating report for {patient_info['Name']} (Sample ID: {selected_sample_id})...")
+            progress_callback(f"  - [{idx}/{total_samples}] Generating report for {patient_info['Name']} (Sample ID: {selected_sample_id})...")
+
+        if progress_update_callback:
+            progress_update_callback(idx, total_samples)
 
         try:
             generate_pdf_report(sample_group, output_path, summary, completed_date_for_pdf, input_file)
             summary.log_success()
             if progress_callback:
                 progress_callback(f"    ...Successfully saved to {output_path}")
+        except (OSError, IOError, PermissionError, ValueError) as e:
+            summary.log_failure(f"MR# {mrn} / Sample {selected_sample_id}", f"Failed to generate PDF: {e}")
+            if progress_callback:
+                progress_callback(f"    ...Error generating PDF for sample {selected_sample_id}")
         except Exception as e:
+            # Catch any other unexpected errors
             summary.log_failure(f"MR# {mrn} / Sample {selected_sample_id}", f"Failed to generate PDF: {e}")
             if progress_callback:
                 progress_callback(f"    ...Error generating PDF for sample {selected_sample_id}")

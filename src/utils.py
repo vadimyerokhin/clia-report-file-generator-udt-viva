@@ -114,7 +114,7 @@ def validate_output_directory(output_dir: str) -> Path:
         A validated Path object for the output directory.
 
     Raises:
-        InvalidPathError: If the directory path is invalid.
+        InvalidPathError: If the directory path is invalid or not writable.
     """
     dir_path = validate_path(output_dir, must_exist=False)
 
@@ -127,6 +127,14 @@ def validate_output_directory(output_dir: str) -> Path:
     # Verify it's a directory
     if not dir_path.is_dir():
         raise InvalidPathError(f"Path exists but is not a directory: '{output_dir}'")
+
+    # Verify write permissions by attempting to create and remove a test file
+    test_file = dir_path / ".write_test_temp"
+    try:
+        test_file.touch()
+        test_file.unlink()
+    except (OSError, PermissionError) as e:
+        raise InvalidPathError(f"Directory '{output_dir}' is not writable: {e}")
 
     return dir_path
 

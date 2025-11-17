@@ -16,10 +16,11 @@ from PySide6.QtWidgets import (
     QTextEdit, QMessageBox, QDialog, QDialogButtonBox, QListWidget, QProgressBar
 )
 from PySide6.QtGui import QFont
-from main import generate_reports, generate_positives_summary_pdf
-from run_summary import RunSummary
-from config import POSITIVES_SUMMARY_FILENAME
-from utils import open_file_explorer
+from .main import generate_reports, generate_positives_summary_pdf
+from .run_summary import RunSummary
+from .config import POSITIVES_SUMMARY_FILENAME
+from .utils import open_file_explorer, validate_output_directory
+from .exceptions import InvalidPathError
 
 class Worker(QObject):
     finished = Signal()
@@ -44,6 +45,9 @@ class Worker(QObject):
             def progress_callback(message):
                 self.progress.emit(message)
 
+            def progress_update_callback(current, total):
+                self.progress_update.emit(current, total)
+
             def conflict_handler(mrn, date_collected, sample_ids):
                 # Create an event loop to block this thread until user responds
                 self.conflict_loop = QEventLoop()
@@ -57,8 +61,10 @@ class Worker(QObject):
 
                 return self.user_choice
 
-            generate_reports(self.input_file, self.output_dir, self.organize_by,
-                           self.summary, progress_callback, conflict_handler)
+            generate_reports(
+                self.input_file, self.output_dir, self.organize_by,
+                self.summary, progress_callback, conflict_handler, progress_update_callback
+            )
 
             # Generate the positives summary PDF
             try:
@@ -78,9 +84,14 @@ class Worker(QObject):
             if self.summary.pdfs_generated > 0:
                 self.progress.emit(f"\n🎉 Successfully generated {self.summary.pdfs_generated} report(s)!")
 
+        except (FileNotFoundError, PermissionError, OSError, IOError) as e:
+            error_msg = f"File system error: {e}"
+            self.error.emit("Error During Processing", error_msg)
+            self.progress.emit(f"\n❌ Fatal error: {error_msg}")
         except Exception as e:
-            self.error.emit("Error During Processing", str(e))
-            self.progress.emit(f"\n❌ Fatal error: {e}")
+            error_msg = f"Unexpected error ({type(e).__name__}): {e}"
+            self.error.emit("Error During Processing", error_msg)
+            self.progress.emit(f"\n❌ Fatal error: {error_msg}")
         finally:
             self.finished.emit()
 
@@ -280,6 +291,16 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # Validate output directory for write permissions
+        try:
+            validate_output_directory(output_dir)
+        except InvalidPathError as e:
+            QMessageBox.critical(
+                self, "❌ Invalid Output Directory",
+                f"The selected output directory is invalid or not writable:\n\n{e}"
+            )
+            return
+
         # Store output directory
         self.last_output_dir = output_dir
 
@@ -299,6 +320,7 @@ class MainWindow(QMainWindow):
 
         # Connect signals
         self.worker.progress.connect(self.log_area.append)
+        self.worker.progress_update.connect(self.update_progress_bar)
         self.worker.conflict.connect(self.handle_conflict)
         self.worker.error.connect(self.handle_error)
         self.thread.started.connect(self.worker.run)
@@ -309,8 +331,14 @@ class MainWindow(QMainWindow):
 
         self.thread.start()
 
-        # Pulse the progress bar
-        self.progress_bar.setRange(0, 0)  # Indeterminate mode
+    @Slot(int, int)
+    def update_progress_bar(self, current, total):
+        """Updates the progress bar with current progress."""
+        if total > 0:
+            percentage = int((current / total) * 100)
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(percentage)
+            self.progress_bar.setFormat(f"Processing report {current} of {total} ({percentage}%)")
 
     @Slot()
     def on_generation_complete(self):

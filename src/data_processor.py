@@ -67,6 +67,8 @@ def load_and_process_data(
 
     if patient_data.empty:
         summary.log_error(file_path, "No data rows with Type='Patient' were found.")
+        # Return an empty groupby object instead of None to maintain consistent return type
+        # This allows the caller to iterate over it without additional None checks
 
     # Step 4: Group Data by Unique Patient Sample (MR# and Date collected)
     grouped_samples = patient_data.groupby(['MR#', 'Date collected'])
