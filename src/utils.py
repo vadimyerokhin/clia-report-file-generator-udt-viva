@@ -3,7 +3,6 @@
 It contains helper functions that are used across different modules, such as
 for sanitizing strings to be used as valid filenames and path validation.
 """
-import os
 import re
 from pathlib import Path
 from typing import Optional
