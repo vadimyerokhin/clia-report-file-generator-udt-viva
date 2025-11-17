@@ -21,3 +21,6 @@ venv/
 # Output directories
 output_pdfs/
 temp_test_output/
+test_output/
+test_output_new/
+output_reports/

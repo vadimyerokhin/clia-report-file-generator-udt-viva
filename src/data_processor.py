@@ -10,10 +10,8 @@ from pandas.core.groupby.generic import DataFrameGroupBy
 
 try:
     from src.config import REQUIRED_COLUMNS
-    from src.exceptions import InvalidCSVFormatError, DataProcessingError, MissingColumnError
 except ImportError:
     from config import REQUIRED_COLUMNS
-    from exceptions import InvalidCSVFormatError, DataProcessingError, MissingColumnError
 
 
 def load_and_process_data(

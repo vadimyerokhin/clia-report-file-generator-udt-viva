@@ -52,7 +52,6 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
                             rightMargin=inch, leftMargin=inch,
                             topMargin=inch, bottomMargin=inch)
     story = []
-    styles = getSampleStyleSheet()
 
     # Get consistent patient info from the first row of the group
     patient_info = sample_group.iloc[0]
