@@ -13,7 +13,7 @@ class TestRunSummary(unittest.TestCase):
         self.assertEqual(self.summary._output_dir, "")
         self.assertEqual(self.summary._skipped_samples, [])
         self.assertEqual(self.summary._invalid_results, {})
-        self.assertEqual(self.summary._positive_results, [])
+        self.assertEqual(self.summary.positive_results, [])
         self.assertEqual(self.summary._errors, [])
 
     def test_set_output_stream(self):
@@ -23,8 +23,8 @@ class TestRunSummary(unittest.TestCase):
 
     def test_log_positive_result(self):
         self.summary.log_positive_result("MRN123", "John Doe", "Opiates", "2023-01-01")
-        self.assertEqual(len(self.summary._positive_results), 1)
-        self.assertEqual(self.summary._positive_results[0], {
+        self.assertEqual(len(self.summary.positive_results), 1)
+        self.assertEqual(self.summary.positive_results[0], {
             "mrn": "MRN123",
             "patient_name": "John Doe",
             "test_name": "Opiates",

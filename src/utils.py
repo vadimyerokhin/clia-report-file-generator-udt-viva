@@ -4,15 +4,18 @@ It contains helper functions that are used across different modules, such as
 for sanitizing strings to be used as valid filenames and path validation.
 """
 import re
+import subprocess
+import platform
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+import pandas as pd
 
 try:
     from src.exceptions import InvalidPathError
-    from src.config import MAX_PATH_LENGTH
+    from src.config import MAX_PATH_LENGTH, DATE_FORMAT_DISPLAY, DATE_FORMAT_FILE
 except ImportError:
     from exceptions import InvalidPathError
-    from config import MAX_PATH_LENGTH
+    from config import MAX_PATH_LENGTH, DATE_FORMAT_DISPLAY, DATE_FORMAT_FILE
 
 
 def sanitize_filename(filename: Optional[str]) -> str:
@@ -126,6 +129,71 @@ def validate_output_directory(output_dir: str) -> Path:
         raise InvalidPathError(f"Path exists but is not a directory: '{output_dir}'")
 
     return dir_path
+
+
+def parse_collection_date(date_str: str) -> Tuple[str, Optional[str]]:
+    """Parses a collection date string and returns formatted versions.
+
+    Args:
+        date_str: The date string to parse.
+
+    Returns:
+        A tuple of (formatted_date_str, error_message).
+        If successful, error_message is None.
+        If failed, formatted_date_str is the original string and error_message contains the error.
+    """
+    try:
+        date_obj = pd.to_datetime(date_str, format='mixed', dayfirst=False)
+        return date_obj.strftime(DATE_FORMAT_FILE), None
+    except Exception as e:
+        error_msg = f"The date '{date_str}' in the 'Date collected' column could not be parsed."
+        return date_str, error_msg
+
+
+def parse_completion_date(date_series: pd.Series) -> Tuple[str, str, Optional[str]]:
+    """Parses test completion dates from a pandas Series.
+
+    Args:
+        date_series: A pandas Series containing test completion dates.
+
+    Returns:
+        A tuple of (file_format_date, display_format_date, error_message).
+        If successful, error_message is None.
+        If failed, returns fallback values and an error message.
+    """
+    try:
+        latest_ts = pd.to_datetime(date_series, format='mixed', dayfirst=False).max()
+        return (
+            latest_ts.strftime(DATE_FORMAT_FILE),
+            latest_ts.strftime(DATE_FORMAT_DISPLAY),
+            None
+        )
+    except (ValueError, TypeError) as e:
+        raw_date = date_series.iloc[0] if not date_series.empty else "N/A"
+        error_msg = f"Could not parse 'Test completed' date ('{raw_date}'). Error: {e}"
+        return "unknown-date", str(raw_date).split(' ')[0], error_msg
+
+
+def open_file_explorer(directory_path: str) -> Optional[str]:
+    """Opens the system file explorer at the specified directory.
+
+    Args:
+        directory_path: The path to the directory to open.
+
+    Returns:
+        None if successful, error message string if failed.
+    """
+    try:
+        if platform.system() == "Windows":
+            subprocess.run(["explorer", directory_path], check=True)
+        elif platform.system() == "Darwin":  # macOS
+            subprocess.run(["open", directory_path], check=True)
+        else:  # Linux and others
+            subprocess.run(["xdg-open", directory_path], check=True)
+        return None
+    except Exception as e:
+        return f"Could not open folder: {e}"
+
 
 if __name__ == '__main__':  # pragma: no cover
     # Example usage for direct testing

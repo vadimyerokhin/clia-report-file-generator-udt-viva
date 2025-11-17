@@ -100,6 +100,7 @@ class TestMain(unittest.TestCase):
         """Test that a malformed date does not crash the application and is logged."""
         mock_summary_instance = MagicMock()
         mock_summary_instance._positive_results = []
+        mock_summary_instance.positive_results = []
         mock_summary_class.return_value = mock_summary_instance
 
         malformed_date_file = os.path.join(self.test_data_dir, "malformed_date_data.csv")
@@ -125,6 +126,7 @@ class TestMain(unittest.TestCase):
         """Test that an error during PDF generation is caught and logged."""
         mock_summary_instance = MagicMock()
         mock_summary_instance._positive_results = []
+        mock_summary_instance.positive_results = []
         mock_summary_class.return_value = mock_summary_instance
 
         input_file = "tests/test_data/sample_data.csv"

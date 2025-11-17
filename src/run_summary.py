@@ -24,6 +24,21 @@ class RunSummary:
         self._errors: list[str] = []
         self.output_stream: TextIO = sys.stdout
 
+    @property
+    def positive_results(self) -> list[dict[str, Any]]:
+        """Returns the list of positive results."""
+        return self._positive_results
+
+    @property
+    def pdfs_generated(self) -> int:
+        """Returns the number of PDFs successfully generated."""
+        return self._pdfs_generated
+
+    @property
+    def total_samples(self) -> int:
+        """Returns the total number of samples processed."""
+        return self._total_samples
+
     def set_output_stream(self, stream: TextIO) -> None:
         """Sets the output stream for the summary printout."""
         self.output_stream = stream

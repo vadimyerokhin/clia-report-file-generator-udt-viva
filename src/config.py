@@ -39,6 +39,21 @@ PDF_SPACER_SMALL: Final[float] = 0.1
 PDF_SPACER_MEDIUM: Final[float] = 0.2
 PDF_SPACER_LARGE: Final[float] = 0.5
 
+# PDF Table Column Widths (in inches)
+PDF_PATIENT_TABLE_COL_WIDTH: Final[float] = 2.16
+PDF_SPECIMEN_LABEL_WIDTH: Final[float] = 1.6
+PDF_SPECIMEN_VALUE_WIDTH: Final[float] = 4.9
+PDF_RESULTS_TEST_NAME_WIDTH: Final[float] = 2.5
+PDF_RESULTS_RESULT_WIDTH: Final[float] = 1.0
+PDF_RESULTS_UNITS_WIDTH: Final[float] = 1.0
+PDF_RESULTS_FLAGS_WIDTH: Final[float] = 1.0
+PDF_RESULTS_COMMENTS_WIDTH: Final[float] = 1.0
+PDF_HEADER_LINE_WIDTH: Final[float] = 6.5
+PDF_POSITIVES_NAME_WIDTH: Final[float] = 2.0
+PDF_POSITIVES_MRN_WIDTH: Final[float] = 1.5
+PDF_POSITIVES_DATE_WIDTH: Final[float] = 1.5
+PDF_POSITIVES_TEST_WIDTH: Final[float] = 1.5
+
 # Maximum file path length for safety
 MAX_PATH_LENGTH: Final[int] = 255
 

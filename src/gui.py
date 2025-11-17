@@ -9,8 +9,6 @@
 import sys
 import os
 import io
-import subprocess
-import platform
 from PySide6.QtCore import QThread, Signal, Slot, QObject, QEventLoop
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -21,6 +19,7 @@ from PySide6.QtGui import QFont
 from main import generate_reports, generate_positives_summary_pdf
 from run_summary import RunSummary
 from config import POSITIVES_SUMMARY_FILENAME
+from utils import open_file_explorer
 
 class Worker(QObject):
     finished = Signal()
@@ -64,7 +63,7 @@ class Worker(QObject):
             # Generate the positives summary PDF
             try:
                 generate_positives_summary_pdf(self.summary, self.output_dir)
-                if self.summary._positive_results:
+                if self.summary.positive_results:
                     summary_path = os.path.join(self.output_dir, POSITIVES_SUMMARY_FILENAME)
                     self.progress.emit(f"\n✅ Positives summary PDF generated: {summary_path}")
             except Exception as e:
@@ -76,8 +75,8 @@ class Worker(QObject):
             self.progress.emit(summary_output)
 
             # Success message
-            if self.summary._pdfs_generated > 0:
-                self.progress.emit(f"\n🎉 Successfully generated {self.summary._pdfs_generated} report(s)!")
+            if self.summary.pdfs_generated > 0:
+                self.progress.emit(f"\n🎉 Successfully generated {self.summary.pdfs_generated} report(s)!")
 
         except Exception as e:
             self.error.emit("Error During Processing", str(e))
@@ -255,18 +254,11 @@ class MainWindow(QMainWindow):
             )
             return
 
-        try:
-            # Platform-specific folder opening
-            if platform.system() == "Windows":
-                os.startfile(self.last_output_dir)
-            elif platform.system() == "Darwin":  # macOS
-                subprocess.run(["open", self.last_output_dir])
-            else:  # Linux and others
-                subprocess.run(["xdg-open", self.last_output_dir])
-        except Exception as e:
+        error = open_file_explorer(self.last_output_dir)
+        if error:
             QMessageBox.warning(
                 self, "Error",
-                f"Could not open folder: {e}\n\nPath: {self.last_output_dir}"
+                f"{error}\n\nPath: {self.last_output_dir}"
             )
 
     @Slot()
