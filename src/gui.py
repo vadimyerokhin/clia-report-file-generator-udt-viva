@@ -7,6 +7,7 @@
 # ]
 # ///
 import sys
+import os
 import io
 from PySide6.QtCore import QThread, Signal, Slot, QObject
 from PySide6.QtWidgets import (
@@ -134,6 +135,9 @@ class MainWindow(QMainWindow):
         filepath, _ = QFileDialog.getOpenFileName(self, "Select Input CSV", "", "CSV Files (*.csv)")
         if filepath:
             self.input_label.setText(filepath)
+            # Automatically set output directory to the directory of the selected CSV file
+            output_dir = os.path.dirname(filepath)
+            self.output_label.setText(output_dir)
 
     @Slot()
     def browse_output_directory(self):
