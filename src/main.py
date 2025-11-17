@@ -6,15 +6,42 @@ drives the workflow from data input to report output.
 """
 import os
 import argparse
+from typing import Optional, Callable
 import pandas as pd
-from data_processor import load_and_process_data
-from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
-from utils import sanitize_filename
-from run_summary import RunSummary
 
-def generate_reports(input_file, output_dir, organize_by, summary, progress_callback=None, conflict_handler=None):
-    """
-    Generates PDF reports based on the provided parameters. This function contains the core logic.
+try:
+    from src.data_processor import load_and_process_data
+    from src.pdf_generator import generate_pdf_report, generate_positives_summary_pdf
+    from src.utils import sanitize_filename
+    from src.run_summary import RunSummary
+    from src.config import DATE_FORMAT_DISPLAY, DATE_FORMAT_FILE, POSITIVES_SUMMARY_FILENAME
+except ImportError:
+    from data_processor import load_and_process_data
+    from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
+    from utils import sanitize_filename
+    from run_summary import RunSummary
+    from config import DATE_FORMAT_DISPLAY, DATE_FORMAT_FILE, POSITIVES_SUMMARY_FILENAME
+
+def generate_reports(
+    input_file: str,
+    output_dir: str,
+    organize_by: Optional[str],
+    summary: RunSummary,
+    progress_callback: Optional[Callable[[str], None]] = None,
+    conflict_handler: Optional[Callable[[str, str, list], Optional[int]]] = None
+) -> None:
+    """Generates PDF reports based on the provided parameters.
+
+    This function contains the core logic for processing CSV data and generating
+    individual PDF reports for each patient sample.
+
+    Args:
+        input_file: Path to the input CSV file.
+        output_dir: Directory to save the generated PDF reports.
+        organize_by: Method to organize output files ('collection-date', 'tested-date', 'mrn', or None).
+        summary: RunSummary instance for tracking execution statistics.
+        progress_callback: Optional callback function for progress updates.
+        conflict_handler: Optional callback for handling duplicate sample IDs.
     """
     summary.set_output_dir(output_dir)
 
@@ -61,17 +88,22 @@ def generate_reports(input_file, output_dir, organize_by, summary, progress_call
         patient_name = sanitize_filename(patient_info['Name'])
 
         try:
-            collection_date_obj = pd.to_datetime(date_collected)
-            collection_date_str = collection_date_obj.strftime('%Y-%m-%d')
+            collection_date_obj = pd.to_datetime(date_collected, format='mixed', dayfirst=False)
+            collection_date_str = collection_date_obj.strftime(DATE_FORMAT_FILE)
         except Exception:
             error_msg = f"The date '{date_collected}' in the 'Date collected' column could not be parsed."
             summary.log_failure(f"MR# {mrn}", error_msg)
             continue
 
         try:
-            latest_completion_ts = pd.to_datetime(sample_group['Test completed']).max()
-            completed_date_str = latest_completion_ts.strftime('%Y-%m-%d')
-            completed_date_for_pdf = latest_completion_ts.strftime('%m/%d/%Y')
+            # Parse with format to avoid warnings
+            latest_completion_ts = pd.to_datetime(
+                sample_group['Test completed'],
+                format='mixed',
+                dayfirst=False
+            ).max()
+            completed_date_str = latest_completion_ts.strftime(DATE_FORMAT_FILE)
+            completed_date_for_pdf = latest_completion_ts.strftime(DATE_FORMAT_DISPLAY)
         except (ValueError, TypeError) as e:
             raw_date = sample_group['Test completed'].iloc[0] if not sample_group['Test completed'].empty else "N/A"
             summary.log_error(f"Patient MR# {mrn}", f"Could not parse 'Test completed' date ('{raw_date}'). Error: {e}")
@@ -110,8 +142,14 @@ def generate_reports(input_file, output_dir, organize_by, summary, progress_call
             if progress_callback:
                 progress_callback(f"    ...Error generating PDF for sample {selected_sample_id}")
 
-def main(input_file, output_dir, organize_by=None):
-    """Drives the PDF report generation process from start to finish for the CLI."""
+def main(input_file: str, output_dir: str, organize_by: Optional[str] = None) -> None:
+    """Drives the PDF report generation process from start to finish for the CLI.
+
+    Args:
+        input_file: Path to the input CSV file.
+        output_dir: Directory to save the generated PDF reports.
+        organize_by: Optional method to organize output files.
+    """
     summary = RunSummary()
 
     def cli_conflict_handler(mrn, date_collected, unique_sample_ids):
@@ -142,7 +180,8 @@ def main(input_file, output_dir, organize_by=None):
     try:
         generate_positives_summary_pdf(summary, output_dir)
         if summary._positive_results:
-            print(f"Successfully generated positives summary PDF: {os.path.join(output_dir, 'positives_summary.pdf')}")
+            summary_path = os.path.join(output_dir, POSITIVES_SUMMARY_FILENAME)
+            print(f"Successfully generated positives summary PDF: {summary_path}")
     except Exception as e:
         print(f"Error generating positives summary PDF: {e}")
 

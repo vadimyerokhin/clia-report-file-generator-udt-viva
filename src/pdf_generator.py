@@ -5,15 +5,30 @@ report for a single patient sample. The module defines functions to create
 various components of the report, such as headers, footers, patient information
 tables, and test result tables.
 """
+import os
+from typing import Any
+import pandas as pd
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.colors import black, lightgrey, grey
+from reportlab.lib.colors import black, lightgrey
 from reportlab.lib.units import inch
-import pandas as pd
-from datetime import datetime
-import os
+
+try:
+    from src.config import (
+        LAB_NAME, LAB_CLIA_ID, LAB_ADDRESS, LAB_CITY_STATE_ZIP,
+        LAB_PHONE, LAB_EMAIL, LAB_DIRECTOR, REPORT_TITLE,
+        SPECIMEN_TYPE, VALID_RESULTS, PDF_MARGIN, PDF_SPACER_SMALL,
+        PDF_SPACER_MEDIUM, PDF_SPACER_LARGE, POSITIVES_SUMMARY_FILENAME
+    )
+except ImportError:
+    from config import (
+        LAB_NAME, LAB_CLIA_ID, LAB_ADDRESS, LAB_CITY_STATE_ZIP,
+        LAB_PHONE, LAB_EMAIL, LAB_DIRECTOR, REPORT_TITLE,
+        SPECIMEN_TYPE, VALID_RESULTS, PDF_MARGIN, PDF_SPACER_SMALL,
+        PDF_SPACER_MEDIUM, PDF_SPACER_LARGE, POSITIVES_SUMMARY_FILENAME
+    )
 
 def generate_pdf_report(sample_group, output_filename, summary, completed_date, input_filename=""):
     """Generates and saves a complete PDF report for a single patient sample.
@@ -44,10 +59,9 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
     mrn = patient_info['MR#']
 
     # --- Filter out invalid results ---
-    valid_results_list = ['positive', 'negative']
     # Ensure 'Test result' column is string type to use .str accessor
     sample_group['Test result'] = sample_group['Test result'].astype(str)
-    valid_mask = sample_group['Test result'].str.strip().str.lower().isin(valid_results_list)
+    valid_mask = sample_group['Test result'].str.strip().str.lower().isin(VALID_RESULTS)
 
     valid_results_df = sample_group[valid_mask]
     invalid_results_df = sample_group[~valid_mask]
@@ -58,15 +72,15 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
 
     # --- 1. Laboratory Header ---
     story.extend(get_lab_header())
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
     # --- 2. Report Title ---
     story.append(get_report_title())
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
     # --- 3. Patient and Specimen Info ---
     story.extend(get_info_tables(patient_info, summary, completed_date, input_filename))
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
     # --- 4. Conditional Positive Note & Log Positives ---
     positive_mask = valid_results_df['Test result'].str.strip().str.lower() == 'positive'
@@ -74,7 +88,7 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
 
     if not positive_results.empty:
         story.append(get_conditional_note())
-        story.append(Spacer(1, 0.1 * inch))
+        story.append(Spacer(1, PDF_SPACER_SMALL * inch))
         # Log each positive result for the summary report
         for _, row in positive_results.iterrows():
             summary.log_positive_result(
@@ -90,7 +104,7 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
         story.extend(get_results_table(valid_results_df))
 
     # --- 6. Footer ---
-    story.append(Spacer(1, 0.5 * inch))
+    story.append(Spacer(1, PDF_SPACER_LARGE * inch))
     story.extend(get_footer())
 
     doc.build(story)
@@ -120,10 +134,15 @@ def get_footer():
     p2 = Paragraph(p2_text, footer_text_style)
     p3 = Paragraph(p3_text, footer_text_style)
 
-    return [footer_header, Spacer(1, 0.1*inch), p1, Spacer(1, 0.1*inch), p2, Spacer(1, 0.1*inch), p3]
+    return [
+        footer_header,
+        Spacer(1, PDF_SPACER_SMALL*inch), p1,
+        Spacer(1, PDF_SPACER_SMALL*inch), p2,
+        Spacer(1, PDF_SPACER_SMALL*inch), p3
+    ]
 
 
-def get_lab_header():
+def get_lab_header() -> list[Any]:
     """Creates and returns the main header for the laboratory report.
 
     The header includes the laboratory's name, CLIA ID, address, contact
@@ -131,27 +150,42 @@ def get_lab_header():
     horizontal line.
 
     Returns:
-        list: A list of ReportLab Flowables representing the formatted header.
+        A list of ReportLab Flowables representing the formatted header.
     """
     styles = getSampleStyleSheet()
-    header_text = "Therapeutic Life Choices, LLC | CLIA ID: 37D2301589 | 1728 S Carson Ave | Tulsa, OK 74119 | p. (918) 917-4321 | e. drvadim@abraxaslabs.org | Laboratory Director: Vadim Yerokhin, PhD"
-    header_style = ParagraphStyle('header_style', parent=styles['Normal'], fontSize=8, alignment=TA_LEFT)
+    header_text = (
+        f"{LAB_NAME} | CLIA ID: {LAB_CLIA_ID} | {LAB_ADDRESS} | {LAB_CITY_STATE_ZIP} | "
+        f"p. {LAB_PHONE} | e. {LAB_EMAIL} | Laboratory Director: {LAB_DIRECTOR}"
+    )
+    header_style = ParagraphStyle(
+        'header_style', parent=styles['Normal'], fontSize=8, alignment=TA_LEFT
+    )
     header = Paragraph(header_text, header_style)
     # The horizontal line will be drawn directly on the canvas in a more advanced setup.
     # For SimpleDocTemplate, we can simulate it with a table.
-    line = Table([['']], colWidths=[6.5*inch], style=TableStyle([('LINEBELOW', (0,0), (-1,-1), 1, black)]))
+    line = Table(
+        [['']],
+        colWidths=[6.5*inch],
+        style=TableStyle([('LINEBELOW', (0,0), (-1,-1), 1, black)])
+    )
     return [header, line]
 
 
-def get_report_title():
+def get_report_title() -> Paragraph:
     """Creates and returns the main title of the report.
 
     Returns:
-        reportlab.platypus.Paragraph: A styled paragraph object for the title.
+        A styled paragraph object for the title.
     """
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('title_style', parent=styles['h1'], fontSize=14, alignment=TA_CENTER, fontName='Helvetica-Bold')
-    title = Paragraph("urine drug test results", title_style)
+    title_style = ParagraphStyle(
+        'title_style',
+        parent=styles['h1'],
+        fontSize=14,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+    title = Paragraph(REPORT_TITLE, title_style)
     return title
 
 def get_info_tables(patient_info, summary, completed_date, input_filename=""):
@@ -215,7 +249,7 @@ def get_info_tables(patient_info, summary, completed_date, input_filename=""):
     specimen_id_paragraph = Paragraph(specimen_id_text, patient_style)
 
     specimen_data = [
-        [Paragraph("Specimen Type:", patient_bold_style), Paragraph("Urine", patient_style)],
+        [Paragraph("Specimen Type:", patient_bold_style), Paragraph(SPECIMEN_TYPE, patient_style)],
         [Paragraph("Specimen ID:", patient_bold_style), specimen_id_paragraph],
         [Paragraph("Collection Date:", patient_bold_style), Paragraph(collection_date, patient_style)],
         [Paragraph("Collected By:", patient_bold_style), Paragraph(collected_by, patient_style)],
@@ -227,7 +261,11 @@ def get_info_tables(patient_info, summary, completed_date, input_filename=""):
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
     ]))
 
-    return [patient_header, patient_table, Spacer(1, 0.2*inch), specimen_header, specimen_table]
+    return [
+        patient_header, patient_table,
+        Spacer(1, PDF_SPACER_MEDIUM*inch),
+        specimen_header, specimen_table
+    ]
 
 def get_conditional_note():
     """Creates a small, italicized note for reports with positive results.
@@ -338,10 +376,15 @@ def generate_positives_summary_pdf(summary, output_dir):
     if not summary._positive_results:
         return  # No positive results to report
 
-    output_filename = os.path.join(output_dir, "positives_summary.pdf")
-    doc = SimpleDocTemplate(output_filename, pagesize=letter,
-                            rightMargin=inch, leftMargin=inch,
-                            topMargin=inch, bottomMargin=inch)
+    output_filename = os.path.join(output_dir, POSITIVES_SUMMARY_FILENAME)
+    doc = SimpleDocTemplate(
+        output_filename,
+        pagesize=letter,
+        rightMargin=PDF_MARGIN*inch,
+        leftMargin=PDF_MARGIN*inch,
+        topMargin=PDF_MARGIN*inch,
+        bottomMargin=PDF_MARGIN*inch
+    )
     story = []
     styles = getSampleStyleSheet()
 
@@ -349,13 +392,13 @@ def generate_positives_summary_pdf(summary, output_dir):
     title_style = ParagraphStyle('title_style', parent=styles['h1'], fontSize=14, alignment=TA_CENTER, fontName='Helvetica-Bold')
     title = Paragraph("Summary of Positive Results", title_style)
     story.append(title)
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
     # --- Introduction ---
     intro_text = f"This report summarizes all <b>{len(summary._positive_results)}</b> positive results detected during the run."
     intro_style = ParagraphStyle('intro_style', parent=styles['Normal'], alignment=TA_LEFT)
     story.append(Paragraph(intro_text, intro_style))
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
     # --- Results Table ---
     header = [
