@@ -12,15 +12,48 @@ import pandas as pd
 try:
     from src.data_processor import load_and_process_data
     from src.pdf_generator import generate_pdf_report, generate_positives_summary_pdf
-    from src.utils import sanitize_filename
+    from src.utils import sanitize_filename, parse_collection_date, parse_completion_date
     from src.run_summary import RunSummary
-    from src.config import DATE_FORMAT_DISPLAY, DATE_FORMAT_FILE, POSITIVES_SUMMARY_FILENAME
+    from src.config import POSITIVES_SUMMARY_FILENAME
 except ImportError:
     from data_processor import load_and_process_data
     from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
-    from utils import sanitize_filename
+    from utils import sanitize_filename, parse_collection_date, parse_completion_date
     from run_summary import RunSummary
-    from config import DATE_FORMAT_DISPLAY, DATE_FORMAT_FILE, POSITIVES_SUMMARY_FILENAME
+    from config import POSITIVES_SUMMARY_FILENAME
+
+
+def cli_conflict_handler(mrn, date_collected, unique_sample_ids):
+    """Handles sample ID conflicts in CLI mode by prompting the user.
+
+    Args:
+        mrn: The medical record number.
+        date_collected: The collection date.
+        unique_sample_ids: List of conflicting sample IDs.
+
+    Returns:
+        The index of the selected sample, or None if skipped.
+    """
+    print(f"\nConflict: Multiple sample records found for patient MR# {mrn} on {date_collected}.")
+    print("Please select which sample to generate a report for:")
+    for i, sample_id in enumerate(unique_sample_ids):
+        print(f"  {i + 1}: Sample ID {sample_id}")
+
+    while True:
+        try:
+            choice = input(f"Enter your choice (1-{len(unique_sample_ids)}, or 's' to skip): ")
+            if choice.lower() == 's':
+                return None
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(unique_sample_ids):
+                return choice_idx
+            else:
+                print(f"  > Invalid choice. Please enter a number between 1 and {len(unique_sample_ids)}.")
+        except ValueError:
+            print("  > Invalid input. Please enter a number or 's'.")
+        except (EOFError, KeyboardInterrupt):
+            print("\nOperation cancelled by user.")
+            return None
 
 def generate_reports(
     input_file: str,
@@ -87,28 +120,18 @@ def generate_reports(
         patient_info = sample_group.iloc[0]
         patient_name = sanitize_filename(patient_info['Name'])
 
-        try:
-            collection_date_obj = pd.to_datetime(date_collected, format='mixed', dayfirst=False)
-            collection_date_str = collection_date_obj.strftime(DATE_FORMAT_FILE)
-        except Exception:
-            error_msg = f"The date '{date_collected}' in the 'Date collected' column could not be parsed."
-            summary.log_failure(f"MR# {mrn}", error_msg)
+        # Parse collection date
+        collection_date_str, collection_error = parse_collection_date(date_collected)
+        if collection_error:
+            summary.log_failure(f"MR# {mrn}", collection_error)
             continue
 
-        try:
-            # Parse with format to avoid warnings
-            latest_completion_ts = pd.to_datetime(
-                sample_group['Test completed'],
-                format='mixed',
-                dayfirst=False
-            ).max()
-            completed_date_str = latest_completion_ts.strftime(DATE_FORMAT_FILE)
-            completed_date_for_pdf = latest_completion_ts.strftime(DATE_FORMAT_DISPLAY)
-        except (ValueError, TypeError) as e:
-            raw_date = sample_group['Test completed'].iloc[0] if not sample_group['Test completed'].empty else "N/A"
-            summary.log_error(f"Patient MR# {mrn}", f"Could not parse 'Test completed' date ('{raw_date}'). Error: {e}")
-            completed_date_str = "unknown-date"
-            completed_date_for_pdf = str(raw_date).split(' ')[0]
+        # Parse completion date
+        completed_date_str, completed_date_for_pdf, completion_error = parse_completion_date(
+            sample_group['Test completed']
+        )
+        if completion_error:
+            summary.log_error(f"Patient MR# {mrn}", completion_error)
 
         final_output_dir = output_dir
         if organize_by:
@@ -152,34 +175,12 @@ def main(input_file: str, output_dir: str, organize_by: Optional[str] = None) ->
     """
     summary = RunSummary()
 
-    def cli_conflict_handler(mrn, date_collected, unique_sample_ids):
-        print(f"\nConflict: Multiple sample records found for patient MR# {mrn} on {date_collected}.")
-        print("Please select which sample to generate a report for:")
-        for i, sample_id in enumerate(unique_sample_ids):
-            print(f"  {i + 1}: Sample ID {sample_id}")
-
-        while True:
-            try:
-                choice = input(f"Enter your choice (1-{len(unique_sample_ids)}, or 's' to skip): ")
-                if choice.lower() == 's':
-                    return None
-                choice_idx = int(choice) - 1
-                if 0 <= choice_idx < len(unique_sample_ids):
-                    return choice_idx
-                else:
-                    print(f"  > Invalid choice. Please enter a number between 1 and {len(unique_sample_ids)}.")
-            except ValueError:
-                print("  > Invalid input. Please enter a number or 's'.")
-            except (EOFError, KeyboardInterrupt):
-                print("\nOperation cancelled by user.")
-                return None
-
     generate_reports(input_file, output_dir, organize_by, summary, progress_callback=print, conflict_handler=cli_conflict_handler)
 
     # Generate the summary PDF of positive results
     try:
         generate_positives_summary_pdf(summary, output_dir)
-        if summary._positive_results:
+        if summary.positive_results:
             summary_path = os.path.join(output_dir, POSITIVES_SUMMARY_FILENAME)
             print(f"Successfully generated positives summary PDF: {summary_path}")
     except Exception as e:
