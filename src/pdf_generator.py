@@ -429,7 +429,7 @@ def get_results_table(sample_group):
     for _, row in sample_group.iterrows():
         data.append([
             safe_str(row['Test Name']),
-            str(row['Test result']),
+            safe_str(row['Test result']),
             safe_str(row['Test units']),
             safe_str(row['Flags']),
             safe_str(row['Comment'])
@@ -472,7 +472,6 @@ if __name__ == '__main__':  # pragma: no cover
     # This block is for testing the PDF generation directly.
     from data_processor import load_and_process_data
     from run_summary import RunSummary
-    import os
 
     summary = RunSummary()
     input_file = 'data/Test_Data.csv'

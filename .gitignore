@@ -2,6 +2,7 @@
 .coverage
 *.coverage
 coverage.xml
+htmlcov/
 
 # Python caches
 __pycache__/
@@ -24,3 +25,6 @@ temp_test_output/
 test_output/
 test_output_new/
 output_reports/
+
+# Analysis files
+ANALYSIS.md
