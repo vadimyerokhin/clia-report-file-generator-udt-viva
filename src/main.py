@@ -12,6 +12,7 @@ import pandas as pd
 try:
     from src.data_processor import load_and_process_data
     from src.pdf_generator import generate_pdf_report, generate_positives_summary_pdf
+    from src.billing_generator import generate_billing_file
     from src.utils import sanitize_filename, parse_collection_date, parse_completion_date, validate_output_directory
     from src.run_summary import RunSummary
     from src.config import POSITIVES_SUMMARY_FILENAME
@@ -19,6 +20,7 @@ try:
 except ImportError:
     from data_processor import load_and_process_data
     from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
+    from billing_generator import generate_billing_file
     from utils import sanitize_filename, parse_collection_date, parse_completion_date, validate_output_directory
     from run_summary import RunSummary
     from config import POSITIVES_SUMMARY_FILENAME
@@ -196,6 +198,19 @@ def generate_reports(
             summary.log_failure(f"MR# {mrn} / Sample {selected_sample_id}", f"Failed to generate PDF: {e}")
             if progress_callback:
                 progress_callback(f"    ...Error generating PDF for sample {selected_sample_id}")
+
+    # Generate billing file after all PDFs are processed
+    if progress_callback:
+        progress_callback("\nGenerating medical billing file (CPT 80307)...")
+
+    try:
+        billing_file_path = generate_billing_file(grouped_samples, output_dir, summary)
+        if progress_callback:
+            progress_callback(f"Successfully generated billing file: {billing_file_path}")
+    except Exception as e:
+        if progress_callback:
+            progress_callback(f"Error generating billing file: {e}")
+        summary.log_error("Billing File", f"Failed to generate billing file: {e}")
 
 def main(input_file: str, output_dir: str, organize_by: Optional[str] = None) -> None:
     """Drives the PDF report generation process from start to finish for the CLI.

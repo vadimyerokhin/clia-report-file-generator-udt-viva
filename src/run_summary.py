@@ -22,6 +22,9 @@ class RunSummary:
         self._invalid_results: defaultdict[Any, list[str]] = defaultdict(list)
         self._positive_results: list[dict[str, Any]] = []
         self._errors: list[str] = []
+        self._billing_entries: int = 0
+        self._billing_file_path: str = ""
+        self._billing_errors: list[str] = []
         self.output_stream: TextIO = sys.stdout
 
     @property
@@ -85,6 +88,22 @@ class RunSummary:
         """Logs a generic error encountered during processing."""
         self._errors.append(f"Identifier '{identifier}': {message}")
 
+    def log_billing_success(self) -> None:
+        """Increments the counter for successfully created billing entries."""
+        self._billing_entries += 1
+
+    def log_billing_failure(self, identifier: str, reason: str) -> None:
+        """Logs when a billing entry could not be created."""
+        self._billing_errors.append(f"Billing entry '{identifier}': {reason}")
+
+    def set_billing_file_path(self, path: str) -> None:
+        """Sets the path to the generated billing file."""
+        self._billing_file_path = path
+
+    def get_billing_count(self) -> int:
+        """Returns the total number of billing entries created."""
+        return self._billing_entries
+
 
     def print_summary(self) -> None:
         """Prints the formatted run summary to the configured output stream."""
@@ -96,8 +115,12 @@ class RunSummary:
         print("\n✅ Successes", file=self.output_stream)
         print(f"- Found {self._total_samples} unique patient samples.", file=self.output_stream)
         print(f"- {self._pdfs_generated} PDF reports successfully generated.", file=self.output_stream)
+        if self._billing_entries > 0:
+            print(f"- {self._billing_entries} billing entries created (CPT 80307).", file=self.output_stream)
         if self._output_dir:
             print(f"- Reports saved to: {self._output_dir}", file=self.output_stream)
+        if self._billing_file_path:
+            print(f"- Billing file saved to: {self._billing_file_path}", file=self.output_stream)
 
         # --- Warnings & Skipped Items ---
         if self._skipped_samples or self._invalid_results:
@@ -115,9 +138,11 @@ class RunSummary:
                         print(f"    - {result_info}", file=self.output_stream)
 
         # --- Errors ---
-        if self._errors:
+        if self._errors or self._billing_errors:
             print("\n❌ Errors Encountered", file=self.output_stream)
             for error in self._errors:
+                print(f"- {error}", file=self.output_stream)
+            for error in self._billing_errors:
                 print(f"- {error}", file=self.output_stream)
 
         print("\n" + "-" * 40, file=self.output_stream)
