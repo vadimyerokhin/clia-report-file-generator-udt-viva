@@ -373,8 +373,12 @@ class MainWindow(QMainWindow):
         """Handle errors from the worker thread."""
         QMessageBox.critical(self, title, message)
 
-if __name__ == '__main__':
+def main():
+    """Main entry point for the GUI application."""
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
+
+if __name__ == '__main__':
+    main()

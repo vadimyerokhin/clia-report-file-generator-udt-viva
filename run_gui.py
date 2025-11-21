@@ -11,12 +11,12 @@ Usage:
 import sys
 from pathlib import Path
 
-# Add src directory to path to support imports
-src_dir = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_dir))
+# Add project root to path to support module imports
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
-# Import and run the GUI
-from gui import main
+# Import and run the GUI using module syntax
+from src.gui import main
 
 if __name__ == '__main__':
     main()

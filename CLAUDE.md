@@ -8,86 +8,88 @@ Python-based laboratory report generator that processes CSV data files and gener
 
 ## Development Commands
 
+### Python Version Requirement
+**Required: Python 3.9 - 3.12**
+
+⚠️ **Important**: Python 3.14 is not yet fully supported due to pandas/pytz compatibility issues. Use Python 3.12 or earlier.
+
 ### Setup
 
-**Using uv (Recommended):**
+**Using pip (Recommended):**
+```bash
+# Ensure you're using Python 3.9-3.12
+python3 --version
+
+# Create virtual environment and install dependencies
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install in editable mode (includes all dependencies)
+pip install -e .
+```
+
+**Using uv (Alternative):**
 ```bash
 # Install uv if not already installed
 # https://github.com/astral-sh/uv
 
-# Create virtual environment and install dependencies
-uv venv
+# Create virtual environment with Python 3.12
+uv venv --python 3.12
 uv sync
-```
 
-**Using pip (Alternative):**
-```bash
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Note: coverage package required for testing but not in requirements.txt
-pip install coverage
+# Note: uv may default to Python 3.14 if available, causing compatibility issues
+# Explicitly specify Python 3.12 as shown above
 ```
 
 ### Running the Application
 
 **CLI Mode:**
 ```bash
-# Using uv (recommended)
-uv run python src/main.py -i <path_to_csv> -o <output_dir>
+# With activated venv
+python src/main.py -i <path_to_csv> -o <output_dir>
 
 # With organization options
-uv run python src/main.py -i data/Test_Data.csv -o output_reports --organize-by collection-date
+python src/main.py -i data/Test_Data.csv -o output_reports --organize-by collection-date
 # Options: collection-date | tested-date | mrn
 
-# Using activated venv (alternative)
-python3 src/main.py -i <path_to_csv> -o <output_dir>
+# Or directly from venv
+.venv/bin/python src/main.py -i <path_to_csv> -o <output_dir>
 ```
 
 **GUI Mode:**
 ```bash
-# Using uv (recommended)
-uv run python run_gui.py
+# With activated venv
+python run_gui.py
 
-# Using activated venv (alternative)
-python3 run_gui.py
+# Or directly from venv
+.venv/bin/python run_gui.py
 ```
 
 ### Testing
 
 ```bash
-# Using uv (recommended)
-uv run python -m unittest discover tests
+# Run all tests
+python -m unittest discover tests
 
 # Run specific test file
-uv run python -m unittest tests.test_data_processor
+python -m unittest tests.test_data_processor
 
-# Test with coverage (requires coverage package)
-uv run coverage run -m unittest discover tests
-uv run coverage report -m
-
-# Generate HTML coverage report
-uv run coverage html
-
-# Using activated venv (alternative)
-python3 -m unittest discover tests
+# Test with coverage (install dev dependencies first)
+pip install -e ".[dev]"
 coverage run -m unittest discover tests
 coverage report -m
+
+# Generate HTML coverage report
+coverage html
 ```
 
 ### Direct Module Testing
 ```bash
-# Using uv (recommended)
-uv run python src/data_processor.py
-uv run python src/pdf_generator.py
+# Test data processor directly
+python src/data_processor.py
 
-# Using activated venv (alternative)
-python3 src/data_processor.py
-python3 src/pdf_generator.py
+# Test PDF generation directly
+python src/pdf_generator.py
 ```
 
 ## Architecture Overview
