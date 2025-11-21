@@ -4,9 +4,20 @@ It includes functions to read CSV data, validate necessary columns, filter for
 patient-specific records, and group the data by unique patient samples for
 further processing.
 """
+from typing import Optional
 import pandas as pd
+from pandas.core.groupby.generic import DataFrameGroupBy
 
-def load_and_process_data(file_path, summary):
+try:
+    from src.config import REQUIRED_COLUMNS
+except ImportError:
+    from config import REQUIRED_COLUMNS
+
+
+def load_and_process_data(
+    file_path: str,
+    summary: 'RunSummary'  # Forward reference to avoid circular import
+) -> Optional[DataFrameGroupBy]:
     """Reads, filters, and groups patient data from a CSV file.
 
     This function performs the initial data ingestion and preparation. It reads a
@@ -16,13 +27,18 @@ def load_and_process_data(file_path, summary):
     collection date. Errors are logged to the provided summary object.
 
     Args:
-        file_path (str): The path to the input CSV file.
-        summary (RunSummary): An instance of the RunSummary class for logging.
+        file_path: The path to the input CSV file.
+        summary: An instance of the RunSummary class for logging.
 
     Returns:
-        pandas.core.groupby.generic.DataFrameGroupBy: A pandas DataFrameGroupBy
-        object containing the data grouped by unique patient samples (by 'MR#'
-        and 'Date collected'). Returns None if a critical error occurs.
+        A pandas DataFrameGroupBy object containing the data grouped by unique
+        patient samples (by 'MR#' and 'Date collected'). Returns None if a
+        critical error occurs.
+
+    Raises:
+        FileNotFoundError: If the input CSV file doesn't exist (logged to summary).
+        InvalidCSVFormatError: If the CSV format is invalid (logged to summary).
+        MissingColumnError: If required columns are missing (logged to summary).
     """
     # Step 1: Read the Input Data
     try:
@@ -38,11 +54,7 @@ def load_and_process_data(file_path, summary):
         return None
 
     # Step 2: Validate required columns
-    required_columns = [
-        'Type', 'ID', 'Date collected', 'Name', 'MR#', 'Date of Birth',
-        'Collected by', 'Test completed', 'Test Name', 'Test result'
-    ]
-    missing_columns = [col for col in required_columns if col not in all_data.columns]
+    missing_columns = [col for col in REQUIRED_COLUMNS if col not in all_data.columns]
     if missing_columns:
         summary.log_error(
             file_path,
@@ -55,6 +67,8 @@ def load_and_process_data(file_path, summary):
 
     if patient_data.empty:
         summary.log_error(file_path, "No data rows with Type='Patient' were found.")
+        # Return an empty groupby object instead of None to maintain consistent return type
+        # This allows the caller to iterate over it without additional None checks
 
     # Step 4: Group Data by Unique Patient Sample (MR# and Date collected)
     grouped_samples = patient_data.groupby(['MR#', 'Date collected'])

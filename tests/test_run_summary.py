@@ -13,7 +13,7 @@ class TestRunSummary(unittest.TestCase):
         self.assertEqual(self.summary._output_dir, "")
         self.assertEqual(self.summary._skipped_samples, [])
         self.assertEqual(self.summary._invalid_results, {})
-        self.assertEqual(self.summary._positive_results, [])
+        self.assertEqual(self.summary.positive_results, [])
         self.assertEqual(self.summary._errors, [])
 
     def test_set_output_stream(self):
@@ -22,28 +22,13 @@ class TestRunSummary(unittest.TestCase):
         self.assertIs(self.summary.output_stream, string_io)
 
     def test_log_positive_result(self):
-        self.summary.log_positive_result("MRN123", "John Doe", "Opiates", "2023-01-01", "1990-05-15", "2023-01-02")
-        self.assertEqual(len(self.summary._positive_results), 1)
-        self.assertEqual(self.summary._positive_results[0], {
+        self.summary.log_positive_result("MRN123", "John Doe", "Opiates", "2023-01-01")
+        self.assertEqual(len(self.summary.positive_results), 1)
+        self.assertEqual(self.summary.positive_results[0], {
             "mrn": "MRN123",
             "patient_name": "John Doe",
             "test_name": "Opiates",
-            "collection_date": "2023-01-01",
-            "dob": "1990-05-15",
-            "test_completed_date": "2023-01-02"
-        })
-
-    def test_log_positive_result_optional_fields(self):
-        """Test that optional fields default to empty strings"""
-        self.summary.log_positive_result("MRN456", "Jane Smith", "Cocaine", "2023-02-15")
-        self.assertEqual(len(self.summary._positive_results), 1)
-        self.assertEqual(self.summary._positive_results[0], {
-            "mrn": "MRN456",
-            "patient_name": "Jane Smith",
-            "test_name": "Cocaine",
-            "collection_date": "2023-02-15",
-            "dob": "",
-            "test_completed_date": ""
+            "collection_date": "2023-01-01"
         })
 
     def test_print_summary_all_sections(self):

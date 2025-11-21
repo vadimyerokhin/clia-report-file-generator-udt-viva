@@ -5,15 +5,164 @@ report for a single patient sample. The module defines functions to create
 various components of the report, such as headers, footers, patient information
 tables, and test result tables.
 """
+import os
+from typing import Any
+import pandas as pd
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.colors import black, lightgrey, grey
+from reportlab.lib.colors import black, lightgrey
 from reportlab.lib.units import inch
-import pandas as pd
-from datetime import datetime
-import os
+
+try:
+    from src.config import (
+        LAB_NAME, LAB_CLIA_ID, LAB_ADDRESS, LAB_CITY_STATE_ZIP,
+        LAB_PHONE, LAB_EMAIL, LAB_DIRECTOR, REPORT_TITLE,
+        SPECIMEN_TYPE, VALID_RESULTS, PDF_MARGIN, PDF_SPACER_SMALL,
+        PDF_SPACER_MEDIUM, PDF_SPACER_LARGE, POSITIVES_SUMMARY_FILENAME,
+        PDF_PATIENT_TABLE_COL_WIDTH, PDF_SPECIMEN_LABEL_WIDTH,
+        PDF_SPECIMEN_VALUE_WIDTH, PDF_RESULTS_TEST_NAME_WIDTH,
+        PDF_RESULTS_RESULT_WIDTH, PDF_RESULTS_UNITS_WIDTH,
+        PDF_RESULTS_FLAGS_WIDTH, PDF_RESULTS_COMMENTS_WIDTH,
+        PDF_HEADER_LINE_WIDTH, PDF_POSITIVES_NAME_WIDTH,
+        PDF_POSITIVES_MRN_WIDTH, PDF_POSITIVES_DATE_WIDTH,
+        PDF_POSITIVES_TEST_WIDTH
+    )
+except ImportError:
+    from config import (
+        LAB_NAME, LAB_CLIA_ID, LAB_ADDRESS, LAB_CITY_STATE_ZIP,
+        LAB_PHONE, LAB_EMAIL, LAB_DIRECTOR, REPORT_TITLE,
+        SPECIMEN_TYPE, VALID_RESULTS, PDF_MARGIN, PDF_SPACER_SMALL,
+        PDF_SPACER_MEDIUM, PDF_SPACER_LARGE, POSITIVES_SUMMARY_FILENAME,
+        PDF_PATIENT_TABLE_COL_WIDTH, PDF_SPECIMEN_LABEL_WIDTH,
+        PDF_SPECIMEN_VALUE_WIDTH, PDF_RESULTS_TEST_NAME_WIDTH,
+        PDF_RESULTS_RESULT_WIDTH, PDF_RESULTS_UNITS_WIDTH,
+        PDF_RESULTS_FLAGS_WIDTH, PDF_RESULTS_COMMENTS_WIDTH,
+        PDF_HEADER_LINE_WIDTH, PDF_POSITIVES_NAME_WIDTH,
+        PDF_POSITIVES_MRN_WIDTH, PDF_POSITIVES_DATE_WIDTH,
+        PDF_POSITIVES_TEST_WIDTH
+    )
+
+
+def safe_str(value: Any) -> str:
+    """Safely converts a value to string, handling None and NaN values.
+
+    This utility function eliminates the repeated pd.notna() pattern throughout the code.
+
+    Args:
+        value: The value to convert to string.
+
+    Returns:
+        The string representation of the value, or empty string if None/NaN.
+    """
+    return str(value) if pd.notna(value) else ''
+
+
+class PDFStyleFactory:
+    """Factory class for creating consistent PDF paragraph styles.
+
+    This class eliminates the duplication of ParagraphStyle creation
+    throughout the module by providing reusable style creation methods.
+    """
+
+    def __init__(self):
+        """Initializes the style factory with base styles."""
+        self.base_styles = getSampleStyleSheet()
+
+    def create_header_style(self) -> ParagraphStyle:
+        """Creates the main header style for the laboratory header."""
+        return ParagraphStyle(
+            'header_style',
+            parent=self.base_styles['Normal'],
+            fontSize=8,
+            alignment=TA_LEFT
+        )
+
+    def create_title_style(self) -> ParagraphStyle:
+        """Creates the title style for report title."""
+        return ParagraphStyle(
+            'title_style',
+            parent=self.base_styles['h1'],
+            fontSize=14,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+
+    def create_info_header_style(self) -> ParagraphStyle:
+        """Creates the style for section headers (Patient/Specimen Information)."""
+        return ParagraphStyle(
+            'info_header',
+            parent=self.base_styles['h2'],
+            fontName='Helvetica-Bold',
+            fontSize=12,
+            alignment=TA_LEFT
+        )
+
+    def create_patient_style(self) -> ParagraphStyle:
+        """Creates the base style for patient information text."""
+        return ParagraphStyle(
+            'patient_style',
+            parent=self.base_styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10
+        )
+
+    def create_patient_bold_style(self) -> ParagraphStyle:
+        """Creates the bold style for patient information labels."""
+        base = self.create_patient_style()
+        return ParagraphStyle(
+            'patient_bold_style',
+            parent=base,
+            fontName='Helvetica-Bold'
+        )
+
+    def create_note_style(self) -> ParagraphStyle:
+        """Creates the style for the positive results note."""
+        return ParagraphStyle(
+            'note_style',
+            parent=self.base_styles['Normal'],
+            fontName='Helvetica-Oblique',
+            fontSize=10
+        )
+
+    def create_table_header_style(self) -> ParagraphStyle:
+        """Creates the style for table headers."""
+        return ParagraphStyle(
+            'table_header',
+            parent=self.base_styles['h2'],
+            fontName='Helvetica-Bold',
+            fontSize=12,
+            alignment=TA_LEFT
+        )
+
+    def create_footer_header_style(self) -> ParagraphStyle:
+        """Creates the style for footer section header."""
+        return ParagraphStyle(
+            'footer_header',
+            parent=self.base_styles['h2'],
+            fontName='Helvetica-Bold',
+            fontSize=12,
+            alignment=TA_LEFT
+        )
+
+    def create_footer_text_style(self) -> ParagraphStyle:
+        """Creates the style for footer body text."""
+        return ParagraphStyle(
+            'footer_text',
+            parent=self.base_styles['Normal'],
+            fontName='Helvetica',
+            fontSize=10,
+            leading=12
+        )
+
+    def create_intro_style(self) -> ParagraphStyle:
+        """Creates the style for introduction text in summary reports."""
+        return ParagraphStyle(
+            'intro_style',
+            parent=self.base_styles['Normal'],
+            alignment=TA_LEFT
+        )
 
 def generate_pdf_report(sample_group, output_filename, summary, completed_date, input_filename=""):
     """Generates and saves a complete PDF report for a single patient sample.
@@ -37,17 +186,15 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
                             rightMargin=inch, leftMargin=inch,
                             topMargin=inch, bottomMargin=inch)
     story = []
-    styles = getSampleStyleSheet()
 
     # Get consistent patient info from the first row of the group
     patient_info = sample_group.iloc[0]
     mrn = patient_info['MR#']
 
     # --- Filter out invalid results ---
-    valid_results_list = ['positive', 'negative']
     # Ensure 'Test result' column is string type to use .str accessor
     sample_group['Test result'] = sample_group['Test result'].astype(str)
-    valid_mask = sample_group['Test result'].str.strip().str.lower().isin(valid_results_list)
+    valid_mask = sample_group['Test result'].str.strip().str.lower().isin(VALID_RESULTS)
 
     valid_results_df = sample_group[valid_mask]
     invalid_results_df = sample_group[~valid_mask]
@@ -58,15 +205,15 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
 
     # --- 1. Laboratory Header ---
     story.extend(get_lab_header())
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
     # --- 2. Report Title ---
     story.append(get_report_title())
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
     # --- 3. Patient and Specimen Info ---
     story.extend(get_info_tables(patient_info, summary, completed_date, input_filename))
-    story.append(Spacer(1, 0.2 * inch))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
     # --- 4. Conditional Positive Note & Log Positives ---
     positive_mask = valid_results_df['Test result'].str.strip().str.lower() == 'positive'
@@ -74,16 +221,14 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
 
     if not positive_results.empty:
         story.append(get_conditional_note())
-        story.append(Spacer(1, 0.1 * inch))
+        story.append(Spacer(1, PDF_SPACER_SMALL * inch))
         # Log each positive result for the summary report
         for _, row in positive_results.iterrows():
             summary.log_positive_result(
                 mrn=mrn,
                 patient_name=patient_info['Name'],
                 test_name=row['Test Name'],
-                collection_date=patient_info['Date collected'],
-                dob=str(patient_info['Date of Birth']) if pd.notna(patient_info['Date of Birth']) else "",
-                test_completed_date=completed_date
+                collection_date=patient_info['Date collected']
             )
 
     # --- 5. Test Results Table ---
@@ -92,7 +237,7 @@ def generate_pdf_report(sample_group, output_filename, summary, completed_date, 
         story.extend(get_results_table(valid_results_df))
 
     # --- 6. Footer ---
-    story.append(Spacer(1, 0.5 * inch))
+    story.append(Spacer(1, PDF_SPACER_LARGE * inch))
     story.extend(get_footer())
 
     doc.build(story)
@@ -108,9 +253,9 @@ def get_footer():
     Returns:
         list: A list of ReportLab Flowables representing the formatted footer.
     """
-    styles = getSampleStyleSheet()
-    footer_header_style = ParagraphStyle('footer_header', parent=styles['h2'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_LEFT)
-    footer_text_style = ParagraphStyle('footer_text', parent=styles['Normal'], fontName='Helvetica', fontSize=10, leading=12)
+    style_factory = PDFStyleFactory()
+    footer_header_style = style_factory.create_footer_header_style()
+    footer_text_style = style_factory.create_footer_text_style()
 
     footer_header = Paragraph("interpretation of results", footer_header_style)
 
@@ -122,10 +267,15 @@ def get_footer():
     p2 = Paragraph(p2_text, footer_text_style)
     p3 = Paragraph(p3_text, footer_text_style)
 
-    return [footer_header, Spacer(1, 0.1*inch), p1, Spacer(1, 0.1*inch), p2, Spacer(1, 0.1*inch), p3]
+    return [
+        footer_header,
+        Spacer(1, PDF_SPACER_SMALL*inch), p1,
+        Spacer(1, PDF_SPACER_SMALL*inch), p2,
+        Spacer(1, PDF_SPACER_SMALL*inch), p3
+    ]
 
 
-def get_lab_header():
+def get_lab_header() -> list[Any]:
     """Creates and returns the main header for the laboratory report.
 
     The header includes the laboratory's name, CLIA ID, address, contact
@@ -133,27 +283,34 @@ def get_lab_header():
     horizontal line.
 
     Returns:
-        list: A list of ReportLab Flowables representing the formatted header.
+        A list of ReportLab Flowables representing the formatted header.
     """
-    styles = getSampleStyleSheet()
-    header_text = "Therapeutic Life Choices, LLC | CLIA ID: 37D2301589 | 1728 S Carson Ave | Tulsa, OK 74119 | p. (918) 917-4321 | e. drvadim@abraxaslabs.org | Laboratory Director: Vadim Yerokhin, PhD"
-    header_style = ParagraphStyle('header_style', parent=styles['Normal'], fontSize=8, alignment=TA_LEFT)
+    style_factory = PDFStyleFactory()
+    header_text = (
+        f"{LAB_NAME} | CLIA ID: {LAB_CLIA_ID} | {LAB_ADDRESS} | {LAB_CITY_STATE_ZIP} | "
+        f"p. {LAB_PHONE} | e. {LAB_EMAIL} | Laboratory Director: {LAB_DIRECTOR}"
+    )
+    header_style = style_factory.create_header_style()
     header = Paragraph(header_text, header_style)
     # The horizontal line will be drawn directly on the canvas in a more advanced setup.
     # For SimpleDocTemplate, we can simulate it with a table.
-    line = Table([['']], colWidths=[6.5*inch], style=TableStyle([('LINEBELOW', (0,0), (-1,-1), 1, black)]))
+    line = Table(
+        [['']],
+        colWidths=[PDF_HEADER_LINE_WIDTH * inch],
+        style=TableStyle([('LINEBELOW', (0,0), (-1,-1), 1, black)])
+    )
     return [header, line]
 
 
-def get_report_title():
+def get_report_title() -> Paragraph:
     """Creates and returns the main title of the report.
 
     Returns:
-        reportlab.platypus.Paragraph: A styled paragraph object for the title.
+        A styled paragraph object for the title.
     """
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('title_style', parent=styles['h1'], fontSize=14, alignment=TA_CENTER, fontName='Helvetica-Bold')
-    title = Paragraph("urine drug test results", title_style)
+    style_factory = PDFStyleFactory()
+    title_style = style_factory.create_title_style()
+    title = Paragraph(REPORT_TITLE, title_style)
     return title
 
 def get_info_tables(patient_info, summary, completed_date, input_filename=""):
@@ -177,25 +334,27 @@ def get_info_tables(patient_info, summary, completed_date, input_filename=""):
         list: A list of ReportLab Flowables, including headers and tables for
             patient and specimen information.
     """
-    styles = getSampleStyleSheet()
-    # Base styles
-    patient_style = ParagraphStyle('patient_style', parent=styles['Normal'], fontName='Helvetica', fontSize=10)
-    patient_bold_style = ParagraphStyle('patient_bold_style', parent=patient_style, fontName='Helvetica-Bold')
-    info_header_style = ParagraphStyle('info_header', parent=styles['h2'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_LEFT)
+    style_factory = PDFStyleFactory()
+    patient_style = style_factory.create_patient_style()
+    patient_bold_style = style_factory.create_patient_bold_style()
+    info_header_style = style_factory.create_info_header_style()
 
     # --- Patient Information Block ---
     patient_header = Paragraph("Patient Information", info_header_style)
 
     # Safely get patient info, converting None or NaN to empty strings
-    name = str(patient_info['Name']) if pd.notna(patient_info['Name']) else ''
-    dob = str(patient_info['Date of Birth']) if pd.notna(patient_info['Date of Birth']) else ''
-    mrn = str(patient_info['MR#']) if pd.notna(patient_info['MR#']) else ''
+    name = safe_str(patient_info['Name'])
+    dob = safe_str(patient_info['Date of Birth'])
+    mrn = safe_str(patient_info['MR#'])
 
     patient_data = [
         [Paragraph("Patient Name", patient_bold_style), Paragraph("DOB", patient_bold_style), Paragraph("Patient id", patient_bold_style)],
         [Paragraph(name, patient_style), Paragraph(dob, patient_style), Paragraph(mrn, patient_style)]
     ]
-    patient_table = Table(patient_data, colWidths=[2.16*inch, 2.16*inch, 2.16*inch])
+    patient_table = Table(
+        patient_data,
+        colWidths=[PDF_PATIENT_TABLE_COL_WIDTH * inch] * 3
+    )
     patient_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
@@ -205,9 +364,9 @@ def get_info_tables(patient_info, summary, completed_date, input_filename=""):
     specimen_header = Paragraph("Specimen Information", info_header_style)
 
     # Safely get specimen info, converting None or NaN to empty strings
-    specimen_id = str(patient_info['ID']) if pd.notna(patient_info['ID']) else ''
-    collection_date = str(patient_info['Date collected']) if pd.notna(patient_info['Date collected']) else ''
-    collected_by = str(patient_info['Collected by']) if pd.notna(patient_info['Collected by']) else ''
+    specimen_id = safe_str(patient_info['ID'])
+    collection_date = safe_str(patient_info['Date collected'])
+    collected_by = safe_str(patient_info['Collected by'])
 
     # Combine Specimen ID with the input filename in fine print
     if input_filename:
@@ -217,19 +376,26 @@ def get_info_tables(patient_info, summary, completed_date, input_filename=""):
     specimen_id_paragraph = Paragraph(specimen_id_text, patient_style)
 
     specimen_data = [
-        [Paragraph("Specimen Type:", patient_bold_style), Paragraph("Urine", patient_style)],
+        [Paragraph("Specimen Type:", patient_bold_style), Paragraph(SPECIMEN_TYPE, patient_style)],
         [Paragraph("Specimen ID:", patient_bold_style), specimen_id_paragraph],
         [Paragraph("Collection Date:", patient_bold_style), Paragraph(collection_date, patient_style)],
         [Paragraph("Collected By:", patient_bold_style), Paragraph(collected_by, patient_style)],
         [Paragraph("Test Completed Date:", patient_bold_style), Paragraph(completed_date, patient_style)],
     ]
-    specimen_table = Table(specimen_data, colWidths=[1.6*inch, 4.9*inch])
+    specimen_table = Table(
+        specimen_data,
+        colWidths=[PDF_SPECIMEN_LABEL_WIDTH * inch, PDF_SPECIMEN_VALUE_WIDTH * inch]
+    )
     specimen_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
     ]))
 
-    return [patient_header, patient_table, Spacer(1, 0.2*inch), specimen_header, specimen_table]
+    return [
+        patient_header, patient_table,
+        Spacer(1, PDF_SPACER_MEDIUM*inch),
+        specimen_header, specimen_table
+    ]
 
 def get_conditional_note():
     """Creates a small, italicized note for reports with positive results.
@@ -237,8 +403,8 @@ def get_conditional_note():
     Returns:
         reportlab.platypus.Paragraph: A styled paragraph object for the note.
     """
-    styles = getSampleStyleSheet()
-    note_style = ParagraphStyle('note_style', parent=styles['Normal'], fontName='Helvetica-Oblique', fontSize=10)
+    style_factory = PDFStyleFactory()
+    note_style = style_factory.create_note_style()
     note = Paragraph("*note: this sample contains a positive result*", note_style)
     return note
 
@@ -262,14 +428,24 @@ def get_results_table(sample_group):
     data = [header]
     for _, row in sample_group.iterrows():
         data.append([
-            str(row['Test Name']) if pd.notna(row['Test Name']) else '',
-            str(row['Test result']),
-            str(row['Test units']) if pd.notna(row['Test units']) else '',
-            str(row['Flags']) if pd.notna(row['Flags']) else '',
-            str(row['Comment']) if pd.notna(row['Comment']) else ''
+            safe_str(row['Test Name']),
+            safe_str(row['Test result']),
+            safe_str(row['Test units']),
+            safe_str(row['Flags']),
+            safe_str(row['Comment'])
         ])
 
-    table = Table(data, colWidths=[2.5*inch, 1*inch, 1*inch, 1*inch, 1*inch], repeatRows=1)
+    table = Table(
+        data,
+        colWidths=[
+            PDF_RESULTS_TEST_NAME_WIDTH * inch,
+            PDF_RESULTS_RESULT_WIDTH * inch,
+            PDF_RESULTS_UNITS_WIDTH * inch,
+            PDF_RESULTS_FLAGS_WIDTH * inch,
+            PDF_RESULTS_COMMENTS_WIDTH * inch
+        ],
+        repeatRows=1
+    )
 
     style = TableStyle([
         ('BACKGROUND', (0,0), (-1,0), lightgrey),
@@ -284,8 +460,8 @@ def get_results_table(sample_group):
     table.setStyle(style)
 
     # Add "Test Information" header above the table
-    styles = getSampleStyleSheet()
-    table_header_style = ParagraphStyle('table_header', parent=styles['h2'], fontName='Helvetica-Bold', fontSize=12, alignment=TA_LEFT)
+    style_factory = PDFStyleFactory()
+    table_header_style = style_factory.create_table_header_style()
     table_header = Paragraph("Test Information", table_header_style)
 
     return [table_header, table]
@@ -296,7 +472,6 @@ if __name__ == '__main__':  # pragma: no cover
     # This block is for testing the PDF generation directly.
     from data_processor import load_and_process_data
     from run_summary import RunSummary
-    import os
 
     summary = RunSummary()
     input_file = 'data/Test_Data.csv'
@@ -330,166 +505,79 @@ if __name__ == '__main__':  # pragma: no cover
         print("Test PDF generation complete.")
 
 
-def generate_positives_summary_pdf(summary, output_dir, total_samples_processed=0):
-    """Generates a professionally formatted summary PDF of all positive results.
-
-    This function creates a CLIA-compliant summary report containing all positive
-    drug test results from the processing run. Results are grouped by patient visit
-    (same patient on same date) with multiple positive tests listed together.
+def generate_positives_summary_pdf(summary, output_dir):
+    """Generates a summary PDF of all positive results from the run.
 
     Args:
-        summary (RunSummary): The summary object containing collected positive results.
-        output_dir (str): The directory to save the summary PDF in (always root output_dir).
-        total_samples_processed (int): Total number of samples processed in the run.
-
-    Returns:
-        str: Path to the generated PDF file.
-
-    Raises:
-        Exception: If PDF generation fails, exception is logged but not raised.
+        summary (RunSummary): The summary object containing the collected positive results.
+        output_dir (str): The directory to save the summary PDF in.
     """
-    # Generate timestamped filename
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
-    output_filename = os.path.join(output_dir, f"Positive_Results_Summary_{timestamp}.pdf")
+    if not summary.positive_results:
+        return  # No positive results to report
 
-    try:
-        doc = SimpleDocTemplate(output_filename, pagesize=letter,
-                                rightMargin=inch, leftMargin=inch,
-                                topMargin=inch, bottomMargin=inch)
-        story = []
-        styles = getSampleStyleSheet()
+    output_filename = os.path.join(output_dir, POSITIVES_SUMMARY_FILENAME)
+    doc = SimpleDocTemplate(
+        output_filename,
+        pagesize=letter,
+        rightMargin=PDF_MARGIN*inch,
+        leftMargin=PDF_MARGIN*inch,
+        topMargin=PDF_MARGIN*inch,
+        bottomMargin=PDF_MARGIN*inch
+    )
+    story = []
+    style_factory = PDFStyleFactory()
 
-        # --- 1. CLIA Laboratory Header ---
-        story.extend(get_lab_header())
-        story.append(Spacer(1, 0.2 * inch))
+    # --- Title ---
+    title_style = style_factory.create_title_style()
+    title = Paragraph("Summary of Positive Results", title_style)
+    story.append(title)
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
-        # --- 2. Report Title ---
-        title_style = ParagraphStyle('title_style', parent=styles['h1'],
-                                     fontSize=14, alignment=TA_CENTER,
-                                     fontName='Helvetica-Bold')
-        title = Paragraph("positive results summary report", title_style)
-        story.append(title)
-        story.append(Spacer(1, 0.3 * inch))
+    # --- Introduction ---
+    intro_text = f"This report summarizes all <b>{len(summary.positive_results)}</b> positive results detected during the run."
+    intro_style = style_factory.create_intro_style()
+    story.append(Paragraph(intro_text, intro_style))
+    story.append(Spacer(1, PDF_SPACER_MEDIUM * inch))
 
-        # --- 3. Check if there are positive results ---
-        if not summary._positive_results:
-            # Generate informational PDF when no positives
-            info_style = ParagraphStyle('info_style', parent=styles['Normal'],
-                                       fontSize=12, alignment=TA_CENTER)
-            info_text = f"<b>No positive results detected</b><br/><br/>" \
-                       f"Run Date: {datetime.now().strftime('%m/%d/%Y %H:%M')}<br/>" \
-                       f"Total Samples Processed: {total_samples_processed}<br/><br/>" \
-                       f"All test results were either negative or invalid."
-            story.append(Paragraph(info_text, info_style))
-            doc.build(story)
-            return output_filename
+    # --- Results Table ---
+    header = [
+        Paragraph("<b>Patient Name</b>"),
+        Paragraph("<b>MRN</b>"),
+        Paragraph("<b>Collection Date</b>"),
+        Paragraph("<b>Positive Test</b>")
+    ]
+    data = [header]
 
-        # --- 4. Summary Statistics ---
-        unique_patients = len(set((r['patient_name'], r['mrn']) for r in summary._positive_results))
-        intro_style = ParagraphStyle('intro_style', parent=styles['Normal'],
-                                     fontSize=10, alignment=TA_LEFT)
-        intro_text = f"<b>Run Date:</b> {datetime.now().strftime('%m/%d/%Y %H:%M')}<br/>" \
-                    f"<b>Total Samples Processed:</b> {total_samples_processed}<br/>" \
-                    f"<b>Positive Results Found:</b> {len(summary._positive_results)}<br/>" \
-                    f"<b>Unique Patients with Positives:</b> {unique_patients}"
-        story.append(Paragraph(intro_text, intro_style))
-        story.append(Spacer(1, 0.2 * inch))
+    # Sort results for consistency
+    sorted_positives = sorted(summary.positive_results, key=lambda x: (x['patient_name'], x['mrn'], x['collection_date']))
 
-        # --- 5. Group Results by Patient Visit ---
-        # Group by (patient_name, mrn, dob, collection_date, test_completed_date)
-        grouped = {}
-        for result in summary._positive_results:
-            # Handle missing DOB and dates
-            dob = result.get('dob', '') or 'N/A'
-            collection = result.get('collection_date', '') or 'Unknown Date'
-            completed = result.get('test_completed_date', '') or 'N/A'
-
-            key = (result['patient_name'], result['mrn'], dob, collection, completed)
-            if key not in grouped:
-                grouped[key] = {
-                    'patient_name': result['patient_name'],
-                    'mrn': result['mrn'],
-                    'dob': dob,
-                    'collection_date': collection,
-                    'test_completed_date': completed,
-                    'tests': []
-                }
-            grouped[key]['tests'].append(result['test_name'])
-
-        # --- 6. Build Results Table ---
-        table_header_style = ParagraphStyle('table_header', parent=styles['h2'],
-                                           fontName='Helvetica-Bold', fontSize=12,
-                                           alignment=TA_LEFT)
-        table_header = Paragraph("Positive Test Results", table_header_style)
-        story.append(table_header)
-        story.append(Spacer(1, 0.1 * inch))
-
-        header = [
-            Paragraph("<b>Patient Name</b>"),
-            Paragraph("<b>DOB</b>"),
-            Paragraph("<b>MRN</b>"),
-            Paragraph("<b>Collection Date</b>"),
-            Paragraph("<b>Test Completed</b>"),
-            Paragraph("<b>Positive Tests</b>")
-        ]
-        data = [header]
-
-        # Sort by patient name, then collection date
-        sorted_groups = sorted(grouped.items(),
-                              key=lambda x: (x[1]['patient_name'],
-                                           x[1]['collection_date'],
-                                           x[1]['mrn']))
-
-        for _, group_data in sorted_groups:
-            # Join multiple tests with commas
-            tests_str = ', '.join(group_data['tests'])
-
-            # Handle long test names with paragraph wrapping
-            tests_para = Paragraph(tests_str, styles['Normal'])
-
-            data.append([
-                group_data['patient_name'],
-                group_data['dob'],
-                str(group_data['mrn']),
-                group_data['collection_date'],
-                group_data['test_completed_date'],
-                tests_para
-            ])
-
-        # Create table with appropriate column widths
-        table = Table(data, colWidths=[1.5*inch, 0.9*inch, 0.8*inch, 1.0*inch, 1.0*inch, 1.3*inch],
-                     repeatRows=1)
-
-        table_style = TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), lightgrey),
-            ('TEXTCOLOR', (0,0), (-1,0), black),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0,0), (-1,-1), 9),
-            ('BOTTOMPADDING', (0,0), (-1,0), 12),
-            ('TOPPADDING', (0,1), (-1,-1), 8),
-            ('BOTTOMPADDING', (0,1), (-1,-1), 8),
-            ('GRID', (0,0), (-1,-1), 1, black)
+    for result in sorted_positives:
+        data.append([
+            str(result['patient_name']),
+            str(result['mrn']),
+            str(result['collection_date']),
+            str(result['test_name'])
         ])
-        table.setStyle(table_style)
-        story.append(table)
 
-        # --- 7. Footer Note ---
-        story.append(Spacer(1, 0.3 * inch))
-        footer_style = ParagraphStyle('footer_style', parent=styles['Normal'],
-                                     fontSize=9, alignment=TA_LEFT,
-                                     fontName='Helvetica-Oblique')
-        footer_text = "<b>Note:</b> This is a presumptive screening test. " \
-                     "Positive results should be confirmed with a more specific confirmatory test. " \
-                     "This summary is for clinical review purposes only."
-        story.append(Paragraph(footer_text, footer_style))
+    table = Table(
+        data,
+        colWidths=[
+            PDF_POSITIVES_NAME_WIDTH * inch,
+            PDF_POSITIVES_MRN_WIDTH * inch,
+            PDF_POSITIVES_DATE_WIDTH * inch,
+            PDF_POSITIVES_TEST_WIDTH * inch
+        ],
+        repeatRows=1
+    )
+    style = TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), lightgrey),
+        ('TEXTCOLOR', (0,0), (-1,0), black),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('GRID', (0,0), (-1,-1), 1, black)
+    ])
+    table.setStyle(style)
+    story.append(table)
 
-        # Build the PDF
-        doc.build(story)
-        return output_filename
-
-    except Exception as e:
-        error_msg = f"Failed to generate positive summary PDF: {e}"
-        summary.log_error("Positive Summary PDF", error_msg)
-        raise
+    doc.build(story)
