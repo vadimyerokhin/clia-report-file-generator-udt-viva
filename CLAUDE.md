@@ -58,12 +58,37 @@ python src/main.py -i data/Test_Data.csv -o output_reports --organize-by collect
 
 **GUI Mode:**
 ```bash
+# Recommended: Using uv run (handles environment automatically)
+uv run python run_gui.py
+
+# Or using the entry point
+uv run gui
+
 # With activated venv
 python run_gui.py
 
 # Or directly from venv
 .venv/bin/python run_gui.py
 ```
+
+**Note on GUI Launch Issues:**
+If you encounter "Could not find the Qt platform plugin 'cocoa'" errors after terminal restart or idle periods:
+
+1. The `run_gui.py` script now automatically configures Qt plugin paths
+2. If the error persists, reinstall PySide6:
+   ```bash
+   uv pip uninstall pyside6 pyside6-essentials pyside6-addons
+   uv pip install "pyside6>=6.10.0"
+   ```
+3. The `uv run` commands are recommended as they handle virtual environment activation automatically
+
+**Troubleshooting Qt Plugin Errors:**
+- The application now includes **automatic PySide6 health checking and repair**
+- On startup, `run_gui.py` checks PySide6 integrity and auto-repairs if corrupted
+- Manual health check: `uv run python src/pyside6_health.py`
+- Error occurs after system sleep/restart: PySide6 installation may have become corrupted
+- Root cause: Qt dynamic libraries losing runtime paths or missing binary files after system events
+- See TROUBLESHOOTING.md for detailed auto-repair documentation
 
 ### Testing
 
@@ -159,6 +184,18 @@ The application follows a pipeline architecture: **Data Ingestion → Validation
 - `generate_billing_file()`: Creates CPT 80307 billing CSV files
 - `parse_patient_name()`: Parses full names into first/last components
 - Formats medical billing data for submission to billing systems
+
+**pyside6_health.py** - PySide6 health and auto-repair layer
+- `PySide6HealthChecker` class: Intelligent health checking and auto-repair for PySide6
+- Cross-platform support (macOS, Linux, Windows)
+- `check_health()`: Validates PySide6 installation integrity
+- `repair()`: Automatic reinstallation of corrupted PySide6 packages
+- `check_and_repair()`: Combined health check with optional auto-repair
+- Detects missing module files (QtCore, QtWidgets, QtGui)
+- Package manager auto-detection (uv vs pip)
+- Comprehensive logging and user feedback
+- CLI tool available: `python src/pyside6_health.py`
+- Integrated into run_gui.py for automatic startup checks
 
 ### Key Design Patterns
 
