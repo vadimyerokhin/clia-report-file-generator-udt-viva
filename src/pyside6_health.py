@@ -137,27 +137,126 @@ class PySide6HealthChecker:
 
         return True
 
-    def _can_import_pyside6(self) -> bool:
-        """Test if PySide6 can be imported successfully.
+    def _check_and_fix_platform_plugin_symlinks(self) -> bool:
+        """Check and fix platform plugin symlinks on macOS.
+
+        On macOS, Qt's platform plugin loader expects plugins named '{platform}.dylib'
+        but PySide6 ships them as 'libq{platform}.dylib'. This creates a mismatch
+        causing Qt to not find the cocoa plugin even though it exists.
+
+        Solution: Create symlinks without the 'lib' prefix.
 
         Returns:
-            True if import succeeds, False otherwise
+            True if plugins are accessible, False if critical issue
+        """
+        if self.platform != "Darwin":
+            return True  # Only needed on macOS
+
+        site_packages = self._find_site_packages()
+        if not site_packages:
+            return False
+
+        platforms_dir = site_packages / "PySide6" / "Qt" / "plugins" / "platforms"
+        if not platforms_dir.exists():
+            self._print("⚠️  Qt plugins/platforms directory not found", "warning")
+            return False
+
+        # Platform plugins that need symlinks on macOS
+        # Format: (target_with_lib_prefix, symlink_without_lib_prefix)
+        plugin_symlinks = [
+            ("libqcocoa.dylib", "cocoa.dylib"),
+            ("libqminimal.dylib", "minimal.dylib"),
+            ("libqoffscreen.dylib", "offscreen.dylib"),
+        ]
+
+        fixed_any = False
+        for target, link_name in plugin_symlinks:
+            target_path = platforms_dir / target
+            link_path = platforms_dir / link_name
+
+            # Skip if target doesn't exist
+            if not target_path.exists():
+                continue
+
+            # Check if symlink exists and is correct
+            if link_path.exists() or link_path.is_symlink():
+                if link_path.is_symlink() and link_path.resolve() == target_path.resolve():
+                    continue  # Already correct
+                else:
+                    # Remove incorrect symlink/file
+                    try:
+                        link_path.unlink()
+                    except Exception as e:
+                        logger.warning(f"Could not remove {link_path}: {e}")
+                        continue
+
+            # Create symlink
+            try:
+                link_path.symlink_to(target)
+                self._print(f"🔗 Created symlink: {link_name} → {target}")
+                fixed_any = True
+            except Exception as e:
+                self._print(
+                    f"⚠️  Could not create symlink {link_name}: {e}",
+                    "warning"
+                )
+
+        if fixed_any:
+            self._print("✅ Fixed Qt platform plugin symlinks for macOS")
+
+        return True
+
+    def _can_import_pyside6(self) -> bool:
+        """Test if PySide6 can be imported and QApplication created successfully.
+
+        This is a comprehensive test that verifies:
+        1. PySide6 modules can be imported
+        2. Qt platform plugin (cocoa on macOS) can be loaded
+        3. QApplication can be instantiated
+
+        Returns:
+            True if all tests pass, False otherwise
         """
         try:
-            # Test import in a subprocess to avoid polluting current environment
+            # Test both import AND QApplication creation in a subprocess
+            # This catches Qt platform plugin issues that basic imports miss
+            test_code = '''
+import sys
+from PySide6.QtWidgets import QApplication
+
+# Create QApplication to test platform plugin loading
+app = QApplication(sys.argv)
+platform = app.platformName()
+
+# Verify we got the expected platform
+if not platform:
+    sys.exit(1)
+
+print(f"Platform: {platform}")
+sys.exit(0)
+'''
             result = subprocess.run(
-                [
-                    self.python_executable,
-                    '-c',
-                    'from PySide6.QtCore import QThread, Signal; '
-                    'from PySide6.QtWidgets import QApplication'
-                ],
+                [self.python_executable, '-c', test_code],
                 capture_output=True,
                 text=True,
                 timeout=10
             )
-            return result.returncode == 0
-        except (subprocess.TimeoutExpired, Exception) as e:
+
+            if result.returncode != 0:
+                logger.error(f"QApplication creation failed: {result.stderr}")
+                return False
+
+            # Verify platform was detected
+            if "Platform:" not in result.stdout:
+                logger.error("QApplication created but platform not detected")
+                return False
+
+            return True
+
+        except subprocess.TimeoutExpired:
+            logger.error("QApplication test timed out")
+            return False
+        except Exception as e:
             logger.error(f"Import test failed: {e}")
             return False
 
@@ -174,7 +273,12 @@ class PySide6HealthChecker:
             self._print("❌ PySide6 files check failed", "error")
             return False
 
-        # Check 2: Can import
+        # Check 2: Platform plugin symlinks (macOS-specific fix)
+        if not self._check_and_fix_platform_plugin_symlinks():
+            self._print("❌ Qt platform plugin check failed", "error")
+            return False
+
+        # Check 3: Can import and create QApplication
         if not self._can_import_pyside6():
             self._print("❌ PySide6 import check failed", "error")
             return False

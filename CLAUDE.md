@@ -72,23 +72,24 @@ python run_gui.py
 ```
 
 **Note on GUI Launch Issues:**
-If you encounter "Could not find the Qt platform plugin 'cocoa'" errors after terminal restart or idle periods:
+If you encounter "Could not find the Qt platform plugin 'cocoa'" errors:
 
-1. The `run_gui.py` script now automatically configures Qt plugin paths
-2. If the error persists, reinstall PySide6:
+**Root Cause**: PySide6 ships platform plugins as `libqcocoa.dylib` but Qt's plugin loader on macOS expects `cocoa.dylib` (without "lib" prefix). This naming mismatch prevents Qt from discovering the plugin even though it exists.
+
+**Automatic Fix**: The application includes intelligent PySide6 health checking with auto-repair:
+- On startup, `run_gui.py` runs health check that auto-creates necessary symlinks
+- Manual health check: `uv run python src/pyside6_health.py`
+- The health checker creates: `cocoa.dylib → libqcocoa.dylib` symlink
+- After PySide6 reinstall, health checker automatically fixes symlinks
+
+**If Error Persists**:
+1. Reinstall PySide6:
    ```bash
    uv pip uninstall pyside6 pyside6-essentials pyside6-addons
    uv pip install "pyside6>=6.10.0"
    ```
-3. The `uv run` commands are recommended as they handle virtual environment activation automatically
-
-**Troubleshooting Qt Plugin Errors:**
-- The application now includes **automatic PySide6 health checking and repair**
-- On startup, `run_gui.py` checks PySide6 integrity and auto-repairs if corrupted
-- Manual health check: `uv run python src/pyside6_health.py`
-- Error occurs after system sleep/restart: PySide6 installation may have become corrupted
-- Root cause: Qt dynamic libraries losing runtime paths or missing binary files after system events
-- See TROUBLESHOOTING.md for detailed auto-repair documentation
+2. Run health check: `uv run python src/pyside6_health.py`
+3. See `TROUBLESHOOTING_COCOA_PLUGIN.md` for detailed technical analysis
 
 ### Testing
 
