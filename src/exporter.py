@@ -1,6 +1,10 @@
 """This module defines the exporter framework for generating reports in different formats."""
 from abc import ABC, abstractmethod
-from pdf_generator import generate_pdf_report
+
+try:
+    from src.pdf_generator import generate_pdf_report
+except ImportError:
+    from pdf_generator import generate_pdf_report
 
 class Exporter(ABC):
     """Abstract base class for all exporters."""

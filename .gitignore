@@ -17,6 +17,7 @@ dist/
 
 # Virtual environment
 venv/
+.venv/
 .env
 
 # Output directories
@@ -25,6 +26,23 @@ temp_test_output/
 test_output/
 test_output_new/
 output_reports/
+test_billing_output/
 
 # Analysis files
 ANALYSIS.md
+
+# macOS
+.DS_Store
+*.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Pytest
+.pytest_cache/
+
+# UV lock file (optional - uncomment to track)
+# uv.lock

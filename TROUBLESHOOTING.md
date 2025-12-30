@@ -132,3 +132,9 @@ For reporting issues, include:
 - PySide6 version
 - Full error message and traceback
 - Steps to reproduce
+
+## Technical Documentation
+
+For deep technical analysis of specific issues, see:
+- [Qt Cocoa Plugin Technical Analysis](docs/troubleshooting/TROUBLESHOOTING_COCOA_PLUGIN.md)
+- [Qt Plugin Fix Summary](docs/troubleshooting/QT_PLUGIN_FIX_SUMMARY.md)
