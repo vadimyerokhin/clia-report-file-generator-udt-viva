@@ -30,7 +30,20 @@ class ConfigManager:
         "recent_input_files": [],
         "recent_output_dirs": [],
         "max_recent_items": 10,
-        "show_welcome": True
+        "show_welcome": True,
+        # Email settings
+        "email_enabled": False,
+        "email_smtp_server": "",
+        "email_smtp_port": 587,
+        "email_username": "",
+        "email_password": "",
+        "email_recipient": "",
+        "email_use_tls": True,
+        # Google Drive settings
+        "gdrive_enabled": False,
+        "gdrive_service_account_file": "",
+        "gdrive_folder_id": "",
+        "gdrive_share_emails": []
     }
 
     def __init__(self, app_name: str = "clia-report-generator"):
@@ -285,6 +298,26 @@ class ConfigManager:
                                         if isinstance(f, str)]
         config["recent_output_dirs"] = [d for d in config["recent_output_dirs"]
                                         if isinstance(d, str)]
+
+        # Validate email settings
+        if not isinstance(config.get("email_enabled"), bool):
+            config["email_enabled"] = False
+        if not isinstance(config.get("email_smtp_port"), int):
+            try:
+                config["email_smtp_port"] = int(config.get("email_smtp_port", 587))
+            except (ValueError, TypeError):
+                config["email_smtp_port"] = 587
+        if not isinstance(config.get("email_use_tls"), bool):
+            config["email_use_tls"] = True
+
+        # Validate Google Drive settings
+        if not isinstance(config.get("gdrive_enabled"), bool):
+            config["gdrive_enabled"] = False
+        if not isinstance(config.get("gdrive_share_emails"), list):
+            config["gdrive_share_emails"] = []
+        # Clean up invalid entries in share emails
+        config["gdrive_share_emails"] = [e for e in config["gdrive_share_emails"]
+                                         if isinstance(e, str) and e.strip()]
 
         return config
 

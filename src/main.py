@@ -6,7 +6,8 @@ drives the workflow from data input to report output.
 """
 import os
 import argparse
-from typing import Optional, Callable
+from pathlib import Path
+from typing import Optional, Callable, List, Dict, Any
 import pandas as pd
 
 try:
@@ -17,6 +18,8 @@ try:
     from src.run_summary import RunSummary
     from src.config import POSITIVES_SUMMARY_FILENAME
     from src.exceptions import InvalidPathError
+    from src.email_sender import EmailSender, EmailConfig, create_email_sender_from_config
+    from src.gdrive_uploader import GoogleDriveUploader, create_drive_uploader_from_config, is_google_api_available
 except ImportError:
     from data_processor import load_and_process_data
     from pdf_generator import generate_pdf_report, generate_positives_summary_pdf
@@ -25,6 +28,8 @@ except ImportError:
     from run_summary import RunSummary
     from config import POSITIVES_SUMMARY_FILENAME
     from exceptions import InvalidPathError
+    from email_sender import EmailSender, EmailConfig, create_email_sender_from_config
+    from gdrive_uploader import GoogleDriveUploader, create_drive_uploader_from_config, is_google_api_available
 
 
 def cli_conflict_handler(mrn, date_collected, unique_sample_ids):
@@ -211,6 +216,178 @@ def generate_reports(
         if progress_callback:
             progress_callback(f"Error generating billing file: {e}")
         summary.log_error("Billing File", f"Failed to generate billing file: {e}")
+
+
+def get_generated_files(output_dir: str, include_billing: bool = False) -> Dict[str, List[str]]:
+    """Get lists of generated files by type.
+
+    Args:
+        output_dir: Output directory to scan
+        include_billing: Whether to include billing CSV files
+
+    Returns:
+        Dictionary with 'pdf_files', 'billing_files' keys containing file paths
+    """
+    result = {
+        'pdf_files': [],
+        'billing_files': []
+    }
+
+    output_path = Path(output_dir)
+    if not output_path.exists():
+        return result
+
+    # Recursively find all PDF files (including in subdirectories)
+    for pdf_file in output_path.rglob("*.pdf"):
+        result['pdf_files'].append(str(pdf_file))
+
+    if include_billing:
+        # Find billing CSV files (only in root output directory)
+        for csv_file in output_path.glob("billing_80307_*.csv"):
+            result['billing_files'].append(str(csv_file))
+
+    return result
+
+
+def send_billing_email(
+    config: Dict[str, Any],
+    billing_file_path: str,
+    progress_callback: Optional[Callable[[str], None]] = None
+) -> bool:
+    """Send billing document via email.
+
+    Args:
+        config: Configuration dictionary with email settings
+        billing_file_path: Path to the billing CSV file
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        True if email was sent successfully, False otherwise
+    """
+    if not config.get('email_enabled'):
+        return False
+
+    recipient = config.get('email_recipient')
+    if not recipient:
+        if progress_callback:
+            progress_callback("Email enabled but no recipient configured")
+        return False
+
+    email_sender = create_email_sender_from_config(config)
+    if email_sender is None:
+        if progress_callback:
+            progress_callback("Email configuration incomplete")
+        return False
+
+    if progress_callback:
+        progress_callback(f"Sending billing document to {recipient}...")
+
+    success, message = email_sender.send_billing_document(recipient, billing_file_path)
+
+    if progress_callback:
+        if success:
+            progress_callback(f"Email sent successfully: {message}")
+        else:
+            progress_callback(f"Email failed: {message}")
+
+    return success
+
+
+def upload_to_google_drive(
+    config: Dict[str, Any],
+    file_paths: List[str],
+    progress_callback: Optional[Callable[[str], None]] = None
+) -> bool:
+    """Upload files to Google Drive and share with configured emails.
+
+    Args:
+        config: Configuration dictionary with Google Drive settings
+        file_paths: List of file paths to upload
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        True if all files were uploaded successfully, False otherwise
+    """
+    if not config.get('gdrive_enabled'):
+        return False
+
+    if not is_google_api_available():
+        if progress_callback:
+            progress_callback("Google Drive API not available (dependencies not installed)")
+        return False
+
+    share_emails = config.get('gdrive_share_emails', [])
+    if not share_emails:
+        if progress_callback:
+            progress_callback("Google Drive enabled but no share emails configured")
+        return False
+
+    uploader = create_drive_uploader_from_config(config)
+    if uploader is None:
+        if progress_callback:
+            progress_callback("Google Drive configuration incomplete")
+        return False
+
+    if progress_callback:
+        progress_callback(f"Uploading {len(file_paths)} file(s) to Google Drive...")
+
+    success, message = uploader.upload_multiple_and_share(
+        file_paths,
+        share_emails,
+        progress_callback=progress_callback
+    )
+
+    if progress_callback:
+        if success:
+            progress_callback(f"Google Drive upload complete: {message}")
+        else:
+            progress_callback(f"Google Drive upload had issues: {message}")
+
+    return success
+
+
+def run_post_generation_actions(
+    output_dir: str,
+    config: Dict[str, Any],
+    progress_callback: Optional[Callable[[str], None]] = None
+) -> Dict[str, bool]:
+    """Run post-generation actions (email, Google Drive upload).
+
+    Args:
+        output_dir: Output directory containing generated files
+        config: Configuration dictionary with email and Google Drive settings
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        Dictionary with 'email_sent' and 'drive_uploaded' boolean results
+    """
+    results = {
+        'email_sent': False,
+        'drive_uploaded': False
+    }
+
+    # Get generated files
+    files = get_generated_files(output_dir, include_billing=True)
+
+    # Send billing email if enabled
+    if config.get('email_enabled') and files['billing_files']:
+        if progress_callback:
+            progress_callback("\n--- Post-Generation: Email ---")
+        # Send the most recent billing file
+        billing_file = files['billing_files'][0]
+        results['email_sent'] = send_billing_email(config, billing_file, progress_callback)
+
+    # Upload to Google Drive if enabled
+    if config.get('gdrive_enabled') and files['pdf_files']:
+        if progress_callback:
+            progress_callback("\n--- Post-Generation: Google Drive ---")
+        # Upload only PDF files (not billing CSV)
+        results['drive_uploaded'] = upload_to_google_drive(
+            config, files['pdf_files'], progress_callback
+        )
+
+    return results
+
 
 def main(input_file: str, output_dir: str, organize_by: Optional[str] = None) -> None:
     """Drives the PDF report generation process from start to finish for the CLI.

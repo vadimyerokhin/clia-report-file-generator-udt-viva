@@ -8,6 +8,8 @@ dependencies = [
     "pandas>=2.3.3",
     "pyside6>=6.10.0",
     "reportlab>=4.4.4",
+    "google-api-python-client>=2.100.0",
+    "google-auth>=2.23.0",
 ]
 
 [project.optional-dependencies]
