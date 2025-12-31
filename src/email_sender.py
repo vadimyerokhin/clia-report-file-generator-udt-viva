@@ -232,10 +232,10 @@ def create_email_sender_from_config(config_dict: dict) -> Optional[EmailSender]:
 
     try:
         email_config = EmailConfig(
-            smtp_server=config_dict['email_smtp_server'],
+            smtp_server=config_dict['email_smtp_server'].strip(),
             smtp_port=int(config_dict['email_smtp_port']),
-            username=config_dict['email_username'],
-            password=config_dict['email_password'],
+            username=config_dict['email_username'].strip(),
+            password=config_dict['email_password'].strip(),
             sender_email=config_dict.get('email_sender'),
             use_tls=config_dict.get('email_use_tls', True)
         )

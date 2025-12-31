@@ -272,7 +272,7 @@ class EmailSettingsWidget(QWidget):
             'email_smtp_server': self.smtp_server.text().strip(),
             'email_smtp_port': self.smtp_port.value(),
             'email_username': self.username.text().strip(),
-            'email_password': self.password.text(),
+            'email_password': self.password.text().strip(),
             'email_recipient': self.recipient.text().strip(),
             'email_use_tls': True
         }
@@ -283,7 +283,7 @@ class EmailSettingsWidget(QWidget):
         self.smtp_server.setText(config.get('email_smtp_server', ''))
         self.smtp_port.setValue(config.get('email_smtp_port', 587))
         self.username.setText(config.get('email_username', ''))
-        self.password.setText(config.get('email_password', ''))
+        self.password.setText(config.get('email_password', '').strip())
         self.recipient.setText(config.get('email_recipient', ''))
 
 
