@@ -432,14 +432,22 @@ class GoogleDriveSettingsWidget(QWidget):
 
     def get_config(self):
         """Get Google Drive configuration as dictionary."""
+        if self.enable_checkbox is None:
+            return {
+                'gdrive_enabled': False,
+                'gdrive_service_account_file': '',
+                'gdrive_folder_id': '',
+                'gdrive_share_emails': []
+            }
+
         share_emails = []
         for i in range(self.share_emails_list.count()):
             share_emails.append(self.share_emails_list.item(i).text())
 
         return {
-            'gdrive_enabled': self.enable_checkbox.isChecked() if self.enable_checkbox else False,
-            'gdrive_service_account_file': self.service_account_file.text().strip() if hasattr(self, 'service_account_file') else '',
-            'gdrive_folder_id': self.folder_id.text().strip() if hasattr(self, 'folder_id') else '',
+            'gdrive_enabled': self.enable_checkbox.isChecked(),
+            'gdrive_service_account_file': self.service_account_file.text().strip(),
+            'gdrive_folder_id': self.folder_id.text().strip(),
             'gdrive_share_emails': share_emails
         }
 
