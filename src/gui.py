@@ -16,6 +16,7 @@ with integrated email and Google Drive upload capabilities.
 import sys
 import os
 import io
+import subprocess
 from PySide6.QtCore import QThread, Signal, Slot, QObject, QEventLoop
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -33,6 +34,65 @@ from .exceptions import InvalidPathError
 from .config_manager import ConfigManager
 from .email_sender import create_email_sender_from_config
 from .gdrive_uploader import is_google_api_available, create_drive_uploader_from_config
+
+
+STORE_LAB_RESULTS_SCRIPT = os.path.join(
+    os.path.expanduser("~"), "Documents", "Projects", "scripts_misc", "store_lab_results.py"
+)
+
+
+def store_results_to_db(input_file, progress_callback=None):
+    """Store results into the lab results database after report generation.
+
+    Determines the Results folder from the input CSV path and invokes
+    store_lab_results.py via subprocess. Failures are logged but never
+    propagate — this must not break the main workflow.
+
+    Args:
+        input_file: Path to the export CSV used for report generation.
+        progress_callback: Optional callable for progress messages.
+    """
+    if not os.path.isfile(STORE_LAB_RESULTS_SCRIPT):
+        if progress_callback:
+            progress_callback(f"  DB storage script not found: {STORE_LAB_RESULTS_SCRIPT}")
+        return
+
+    results_folder = os.path.dirname(os.path.abspath(input_file))
+
+    # Sanity check: folder should exist and contain the input CSV
+    if not os.path.isdir(results_folder):
+        if progress_callback:
+            progress_callback(f"  Results folder not found: {results_folder}")
+        return
+
+    try:
+        result = subprocess.run(
+            [sys.executable, STORE_LAB_RESULTS_SCRIPT, results_folder],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            # Extract key stats from output for the log
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line and ("IMPORTED" in line or "SKIPPED" in line
+                             or "Patients:" in line or "Positives:" in line
+                             or "Database:" in line or "Test results:" in line):
+                    if progress_callback:
+                        progress_callback(f"  {line}")
+            if progress_callback:
+                progress_callback("  Database storage complete.")
+        else:
+            if progress_callback:
+                stderr_summary = (result.stderr or "").strip()[:200]
+                progress_callback(f"  Database storage failed (exit {result.returncode}): {stderr_summary}")
+    except subprocess.TimeoutExpired:
+        if progress_callback:
+            progress_callback("  Database storage timed out (60s limit).")
+    except Exception as e:
+        if progress_callback:
+            progress_callback(f"  Database storage error: {e}")
 
 
 class Worker(QObject):
@@ -94,6 +154,10 @@ class Worker(QObject):
             if self.config.get('email_enabled') or self.config.get('gdrive_enabled'):
                 self.progress.emit("\n" + "="*40 + "\n📤 Post-Generation Actions\n" + "="*40)
                 run_post_generation_actions(self.output_dir, self.config, progress_callback)
+
+            # Store results to lab database (always runs, failures are non-blocking)
+            self.progress.emit("\n" + "="*40 + "\n💾 Database Storage\n" + "="*40)
+            store_results_to_db(self.input_file, progress_callback)
 
             # Append summary to progress
             summary_output = self.summary.output_stream.getvalue()
