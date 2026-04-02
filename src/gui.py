@@ -17,14 +17,17 @@ import sys
 import os
 import io
 import subprocess
-from PySide6.QtCore import QThread, Signal, Slot, QObject, QEventLoop
+from typing import Optional
+from PySide6.QtCore import QThread, Signal, Slot, QObject, QEventLoop, Qt, QDate, QTimer
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QFileDialog, QGroupBox, QRadioButton,
     QTextEdit, QMessageBox, QDialog, QDialogButtonBox, QListWidget, QProgressBar,
-    QCheckBox, QSpinBox, QTabWidget, QScrollArea, QFrame
+    QCheckBox, QSpinBox, QTabWidget, QScrollArea, QFrame, QTableWidget,
+    QTableWidgetItem, QHeaderView, QComboBox, QDateEdit, QAbstractItemView,
+    QSplitter
 )
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QColor
 
 from .main import generate_reports, generate_positives_summary_pdf, run_post_generation_actions
 from .run_summary import RunSummary
@@ -34,6 +37,7 @@ from .exceptions import InvalidPathError
 from .config_manager import ConfigManager
 from .email_sender import create_email_sender_from_config
 from .gdrive_uploader import is_google_api_available, create_drive_uploader_from_config
+from . import db_search
 
 
 STORE_LAB_RESULTS_SCRIPT = os.path.join(
@@ -529,6 +533,686 @@ class GoogleDriveSettingsWidget(QWidget):
             self.share_emails_list.addItem(email)
 
 
+class _SearchWorker(QObject):
+    """Background worker for database search queries."""
+    finished = Signal(list, int)  # results, total_count
+    error = Signal(str)
+
+    def __init__(self, query, date_from, date_to, test_name, test_result,
+                 dob, collected_by, limit, offset):
+        super().__init__()
+        self.query = query
+        self.date_from = date_from
+        self.date_to = date_to
+        self.test_name = test_name
+        self.test_result = test_result
+        self.dob = dob
+        self.collected_by = collected_by
+        self.limit = limit
+        self.offset = offset
+
+    def run(self):
+        try:
+            results, total = db_search.search_patients(
+                query=self.query,
+                date_from=self.date_from,
+                date_to=self.date_to,
+                test_name=self.test_name,
+                test_result=self.test_result,
+                dob=self.dob,
+                collected_by=self.collected_by,
+                limit=self.limit,
+                offset=self.offset,
+            )
+            self.finished.emit(results, total)
+        except FileNotFoundError:
+            self.error.emit("Database not found. Generate reports first to populate the database.")
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class DatabaseSearchWidget(QWidget):
+    """Widget for searching the lab results database."""
+
+    RESULTS_PER_PAGE = 100
+    COLUMNS = ["Name", "MRN", "DOB", "Collection Date", "# Tests", "# Positive"]
+
+    def __init__(self, config_manager, parent=None):
+        super().__init__(parent)
+        self.config_manager = config_manager
+        self._current_results: list = []
+        self._total_count = 0
+        self._current_offset = 0
+        self._search_thread = None
+        self._debounce_timer = QTimer()
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(300)
+        self._debounce_timer.timeout.connect(self._execute_search)
+
+        self._build_ui()
+        self._check_db_status()
+
+    # ── UI Construction ─────────────────────────────────────────
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Reports directory selector
+        dir_group = QGroupBox("Reports Directory")
+        dir_layout = QHBoxLayout(dir_group)
+        self.reports_dir_input = QLineEdit()
+        self.reports_dir_input.setPlaceholderText(
+            "Directory where generated reports are stored (for opening PDFs)"
+        )
+        self.reports_dir_input.setToolTip(
+            "Set the root folder where your generated PDF reports and billing files are stored. "
+            "The app searches this folder recursively when you click 'Open Report'."
+        )
+        saved_dir = self.config_manager.get("search_reports_directory", "")
+        if saved_dir and os.path.isdir(saved_dir):
+            self.reports_dir_input.setText(saved_dir)
+        elif not saved_dir:
+            # Default to output dir from report generation tab
+            fallback = self.config_manager.get("last_output_dir", "")
+            if fallback and os.path.isdir(fallback):
+                self.reports_dir_input.setText(fallback)
+        self.reports_dir_browse = QPushButton("Browse...")
+        self.reports_dir_browse.clicked.connect(self._browse_reports_dir)
+        dir_layout.addWidget(QLabel("Path:"))
+        dir_layout.addWidget(self.reports_dir_input)
+        dir_layout.addWidget(self.reports_dir_browse)
+        layout.addWidget(dir_group)
+
+        # Quick search bar
+        search_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search by patient name or MRN...")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.returnPressed.connect(self._execute_search)
+        self.search_input.textChanged.connect(self._on_search_text_changed)
+        search_layout.addWidget(self.search_input)
+
+        self.search_button = QPushButton("Search")
+        self.search_button.clicked.connect(self._execute_search)
+        search_layout.addWidget(self.search_button)
+
+        self.clear_button = QPushButton("Clear")
+        self.clear_button.clicked.connect(self._clear_search)
+        search_layout.addWidget(self.clear_button)
+        layout.addLayout(search_layout)
+
+        # Advanced filters (collapsible)
+        self.filter_group = QGroupBox("Advanced Filters")
+        self.filter_group.setCheckable(True)
+        self.filter_group.setChecked(False)
+        filter_layout = QVBoxLayout(self.filter_group)
+
+        # Row 1: Date range
+        date_layout = QHBoxLayout()
+        date_layout.addWidget(QLabel("Collection Date From:"))
+        self.date_from = QDateEdit()
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setSpecialValueText("Any")
+        self.date_from.setDate(self.date_from.minimumDate())
+        date_layout.addWidget(self.date_from)
+        date_layout.addWidget(QLabel("To:"))
+        self.date_to = QDateEdit()
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setSpecialValueText("Any")
+        self.date_to.setDate(self.date_to.minimumDate())
+        date_layout.addWidget(self.date_to)
+        date_layout.addStretch()
+        filter_layout.addLayout(date_layout)
+
+        # Row 2: Test name, result, DOB
+        row2_layout = QHBoxLayout()
+        row2_layout.addWidget(QLabel("Test Name:"))
+        self.test_name_combo = QComboBox()
+        self.test_name_combo.setEditable(True)
+        self.test_name_combo.addItem("")  # "Any" placeholder
+        self.test_name_combo.setMinimumWidth(150)
+        row2_layout.addWidget(self.test_name_combo)
+
+        row2_layout.addWidget(QLabel("Result:"))
+        self.result_combo = QComboBox()
+        self.result_combo.addItems(["", "Positive", "Negative", "Pending"])
+        row2_layout.addWidget(self.result_combo)
+
+        row2_layout.addWidget(QLabel("DOB:"))
+        self.dob_edit = QDateEdit()
+        self.dob_edit.setCalendarPopup(True)
+        self.dob_edit.setSpecialValueText("Any")
+        self.dob_edit.setDate(self.dob_edit.minimumDate())
+        row2_layout.addWidget(self.dob_edit)
+        row2_layout.addStretch()
+        filter_layout.addLayout(row2_layout)
+
+        # Row 3: Collected by
+        row3_layout = QHBoxLayout()
+        row3_layout.addWidget(QLabel("Collected By:"))
+        self.collected_by_input = QLineEdit()
+        self.collected_by_input.setPlaceholderText("Provider name...")
+        row3_layout.addWidget(self.collected_by_input)
+        row3_layout.addStretch()
+        filter_layout.addLayout(row3_layout)
+
+        layout.addWidget(self.filter_group)
+
+        # Status / DB info bar
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
+
+        # Splitter for results table and detail panel
+        splitter = QSplitter(Qt.Vertical)
+
+        # Results table
+        results_widget = QWidget()
+        results_layout = QVBoxLayout(results_widget)
+        results_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.results_count_label = QLabel("")
+        results_layout.addWidget(self.results_count_label)
+
+        self.results_table = QTableWidget()
+        self.results_table.setColumnCount(len(self.COLUMNS))
+        self.results_table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        for i in range(1, len(self.COLUMNS)):
+            self.results_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
+        self.results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.results_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.results_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.results_table.setSortingEnabled(True)
+        self.results_table.verticalHeader().setVisible(False)
+        self.results_table.currentItemChanged.connect(self._on_row_selected)
+        results_layout.addWidget(self.results_table)
+
+        # Load more button
+        self.load_more_button = QPushButton("Load More Results")
+        self.load_more_button.setVisible(False)
+        self.load_more_button.clicked.connect(self._load_more)
+        results_layout.addWidget(self.load_more_button)
+
+        splitter.addWidget(results_widget)
+
+        # Detail panel
+        detail_widget = QWidget()
+        detail_layout = QVBoxLayout(detail_widget)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+
+        detail_header = QHBoxLayout()
+        self.detail_label = QLabel("Select a row above to view test details")
+        self.detail_label.setStyleSheet("font-weight: bold;")
+        detail_header.addWidget(self.detail_label)
+        detail_header.addStretch()
+
+        self.open_pdf_button = QPushButton("Open Report PDF")
+        self.open_pdf_button.setEnabled(False)
+        self.open_pdf_button.clicked.connect(self._open_report_pdf)
+        detail_header.addWidget(self.open_pdf_button)
+
+        self.open_billing_button = QPushButton("Open Billing File")
+        self.open_billing_button.setEnabled(False)
+        self.open_billing_button.clicked.connect(self._open_billing_file)
+        detail_header.addWidget(self.open_billing_button)
+
+        self.open_folder_button = QPushButton("Open Folder")
+        self.open_folder_button.setEnabled(False)
+        self.open_folder_button.clicked.connect(self._open_containing_folder)
+        detail_header.addWidget(self.open_folder_button)
+
+        detail_layout.addLayout(detail_header)
+
+        self.detail_table = QTableWidget()
+        self.detail_table.setColumnCount(5)
+        self.detail_table.setHorizontalHeaderLabels(
+            ["Test Name", "Result", "Units", "Flags", "Completed"]
+        )
+        self.detail_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        for i in range(1, 5):
+            self.detail_table.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
+        self.detail_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.detail_table.verticalHeader().setVisible(False)
+        detail_layout.addWidget(self.detail_table)
+
+        splitter.addWidget(detail_widget)
+        splitter.setSizes([400, 200])
+
+        layout.addWidget(splitter)
+
+    # ── Database Status ─────────────────────────────────────────
+
+    def _check_db_status(self):
+        """Check if the database exists and update UI accordingly."""
+        if not db_search.db_exists():
+            self.status_label.setText(
+                "No database found at: " + str(db_search.get_db_path()) +
+                "\nGenerate reports first to populate the database."
+            )
+            self.status_label.setStyleSheet("color: orange; padding: 4px;")
+            self.search_input.setEnabled(False)
+            self.search_button.setEnabled(False)
+            self.filter_group.setEnabled(False)
+            return
+
+        self.status_label.setText("Database: " + str(db_search.get_db_path()))
+        self.status_label.setStyleSheet("color: gray; font-size: 10px;")
+        self.search_input.setEnabled(True)
+        self.search_button.setEnabled(True)
+        self.filter_group.setEnabled(True)
+        self._populate_test_names()
+
+    def _populate_test_names(self):
+        """Populate the test name combobox from the database."""
+        try:
+            names = db_search.get_distinct_test_names()
+            self.test_name_combo.clear()
+            self.test_name_combo.addItem("")  # "Any"
+            self.test_name_combo.addItems(names)
+        except Exception:
+            pass  # Non-critical
+
+    # ── Reports Directory ───────────────────────────────────────
+
+    def _browse_reports_dir(self):
+        dirpath = QFileDialog.getExistingDirectory(self, "Select Reports Directory")
+        if dirpath:
+            self.reports_dir_input.setText(dirpath)
+            self.config_manager.set("search_reports_directory", dirpath)
+            self.config_manager.save_config()
+
+    def _get_reports_dir(self) -> str:
+        """Get the current reports directory, with validation."""
+        d = self.reports_dir_input.text().strip()
+        if d and os.path.isdir(d):
+            return d
+        # Fallback to output dir
+        fallback = self.config_manager.get("last_output_dir", "")
+        if fallback and os.path.isdir(fallback):
+            return fallback
+        return ""
+
+    # ── Search Execution ────────────────────────────────────────
+
+    def _on_search_text_changed(self):
+        """Debounce text input to avoid querying on every keystroke."""
+        self._debounce_timer.start()
+
+    def _clear_search(self):
+        """Clear all search fields and results."""
+        self.search_input.clear()
+        self.date_from.setDate(self.date_from.minimumDate())
+        self.date_to.setDate(self.date_to.minimumDate())
+        self.test_name_combo.setCurrentIndex(0)
+        self.result_combo.setCurrentIndex(0)
+        self.dob_edit.setDate(self.dob_edit.minimumDate())
+        self.collected_by_input.clear()
+        self.results_table.setRowCount(0)
+        self.detail_table.setRowCount(0)
+        self.results_count_label.setText("")
+        self.detail_label.setText("Select a row above to view test details")
+        self.load_more_button.setVisible(False)
+        self._current_results = []
+        self._total_count = 0
+        self._current_offset = 0
+        self._disable_action_buttons()
+
+    def _execute_search(self, load_more=False):
+        """Run the search query in a background thread."""
+        if not db_search.db_exists():
+            self._check_db_status()
+            return
+
+        # Prevent concurrent searches
+        if self._search_thread and self._search_thread.isRunning():
+            return
+
+        if not load_more:
+            self._current_offset = 0
+            self._current_results = []
+
+        # Gather filter values
+        query = self.search_input.text().strip()
+
+        date_from_str = ""
+        if self.filter_group.isChecked() and self.date_from.date() != self.date_from.minimumDate():
+            date_from_str = self.date_from.date().toString("yyyy-MM-dd")
+
+        date_to_str = ""
+        if self.filter_group.isChecked() and self.date_to.date() != self.date_to.minimumDate():
+            date_to_str = self.date_to.date().toString("yyyy-MM-dd")
+
+        test_name = ""
+        if self.filter_group.isChecked():
+            test_name = self.test_name_combo.currentText().strip()
+
+        test_result = ""
+        if self.filter_group.isChecked():
+            test_result = self.result_combo.currentText().strip()
+
+        dob_str = ""
+        if self.filter_group.isChecked() and self.dob_edit.date() != self.dob_edit.minimumDate():
+            dob_str = self.dob_edit.date().toString("yyyy-MM-dd")
+
+        collected_by = ""
+        if self.filter_group.isChecked():
+            collected_by = self.collected_by_input.text().strip()
+
+        # Don't search if everything is empty
+        if not any([query, date_from_str, date_to_str, test_name, test_result, dob_str, collected_by]):
+            if not load_more:
+                self.results_count_label.setText("Enter a search term or apply filters.")
+            return
+
+        self.search_button.setEnabled(False)
+        self.results_count_label.setText("Searching...")
+
+        self._search_thread = QThread()
+        worker = _SearchWorker(
+            query, date_from_str, date_to_str, test_name, test_result,
+            dob_str, collected_by, self.RESULTS_PER_PAGE, self._current_offset
+        )
+        worker.moveToThread(self._search_thread)
+        self._search_thread.started.connect(worker.run)
+        worker.finished.connect(self._on_search_complete)
+        worker.error.connect(self._on_search_error)
+        worker.finished.connect(self._search_thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.error.connect(self._search_thread.quit)
+        worker.error.connect(worker.deleteLater)
+        self._search_thread.finished.connect(self._search_thread.deleteLater)
+        self._search_thread.start()
+
+    @Slot(list, int)
+    def _on_search_complete(self, results, total_count):
+        """Handle search results from the background thread."""
+        self.search_button.setEnabled(True)
+        self._total_count = total_count
+
+        if self._current_offset == 0:
+            self._current_results = results
+        else:
+            self._current_results.extend(results)
+
+        self._current_offset += len(results)
+        self._populate_results_table()
+
+        # Update count label
+        showing = len(self._current_results)
+        if total_count == 0:
+            self.results_count_label.setText("No results found.")
+        else:
+            self.results_count_label.setText(
+                f"Showing {showing} of {total_count} result(s)"
+            )
+
+        # Show/hide load more
+        self.load_more_button.setVisible(showing < total_count)
+
+    @Slot(str)
+    def _on_search_error(self, message):
+        """Handle search errors."""
+        self.search_button.setEnabled(True)
+        self.results_count_label.setText(f"Error: {message}")
+        self.results_count_label.setStyleSheet("color: red;")
+
+    def _load_more(self):
+        """Load the next page of results."""
+        self._execute_search(load_more=True)
+
+    # ── Results Table ───────────────────────────────────────────
+
+    def _populate_results_table(self):
+        """Fill the results table with current results."""
+        self.results_table.setSortingEnabled(False)
+        self.results_table.setRowCount(len(self._current_results))
+
+        for row_idx, result in enumerate(self._current_results):
+            self.results_table.setItem(row_idx, 0, QTableWidgetItem(result["patient_name"]))
+            self.results_table.setItem(row_idx, 1, QTableWidgetItem(result["mrn"]))
+            self.results_table.setItem(row_idx, 2, QTableWidgetItem(
+                self._format_date_display(result["dob"])
+            ))
+            self.results_table.setItem(row_idx, 3, QTableWidgetItem(
+                self._format_date_display(result["collection_date"])
+            ))
+
+            tests_item = QTableWidgetItem()
+            tests_item.setData(Qt.DisplayRole, result["num_tests"])
+            self.results_table.setItem(row_idx, 4, tests_item)
+
+            pos_item = QTableWidgetItem()
+            pos_item.setData(Qt.DisplayRole, result["num_positive"])
+            if result["num_positive"] > 0:
+                pos_item.setForeground(QColor("red"))
+            self.results_table.setItem(row_idx, 5, pos_item)
+
+        self.results_table.setSortingEnabled(True)
+
+    @staticmethod
+    def _format_date_display(iso_date: str) -> str:
+        """Convert ISO date to MM/DD/YYYY for display."""
+        if not iso_date or len(iso_date) < 10:
+            return iso_date or ""
+        try:
+            parts = iso_date[:10].split("-")
+            return f"{parts[1]}/{parts[2]}/{parts[0]}"
+        except (IndexError, ValueError):
+            return iso_date
+
+    # ── Detail Panel ────────────────────────────────────────────
+
+    def _on_row_selected(self, current, _previous):
+        """When a results row is selected, populate the detail panel."""
+        if current is None:
+            return
+
+        row = current.row()
+        if row < 0 or row >= len(self._current_results):
+            return
+
+        result = self._current_results[row]
+        specimen_id = result["specimen_id"]
+
+        self.detail_label.setText(
+            f"Test details for {result['patient_name']} "
+            f"(MRN: {result['mrn']}, Collected: {self._format_date_display(result['collection_date'])})"
+        )
+
+        try:
+            details = db_search.get_specimen_details(specimen_id)
+        except Exception as e:
+            self.detail_label.setText(f"Error loading details: {e}")
+            self.detail_table.setRowCount(0)
+            self._disable_action_buttons()
+            return
+
+        self.detail_table.setRowCount(len(details))
+        for i, test in enumerate(details):
+            self.detail_table.setItem(i, 0, QTableWidgetItem(test.get("test_name", "")))
+
+            result_text = test.get("result", "")
+            result_item = QTableWidgetItem(result_text)
+            if test.get("is_positive"):
+                result_item.setForeground(QColor("red"))
+            elif test.get("is_pending"):
+                result_item.setForeground(QColor("orange"))
+            self.detail_table.setItem(i, 1, result_item)
+
+            self.detail_table.setItem(i, 2, QTableWidgetItem(test.get("units", "") or ""))
+            self.detail_table.setItem(i, 3, QTableWidgetItem(test.get("flags", "") or ""))
+            self.detail_table.setItem(i, 4, QTableWidgetItem(
+                self._format_date_display(test.get("test_completed_at", "") or "")
+            ))
+
+        # Enable action buttons
+        self.open_pdf_button.setEnabled(True)
+        self.open_billing_button.setEnabled(True)
+        self.open_folder_button.setEnabled(True)
+
+    def _disable_action_buttons(self):
+        self.open_pdf_button.setEnabled(False)
+        self.open_billing_button.setEnabled(False)
+        self.open_folder_button.setEnabled(False)
+
+    def _get_selected_result(self) -> Optional[dict]:
+        """Get the currently selected search result, or None."""
+        row = self.results_table.currentRow()
+        if row < 0 or row >= len(self._current_results):
+            return None
+        return self._current_results[row]
+
+    # ── File Actions ────────────────────────────────────────────
+
+    def _open_report_pdf(self):
+        result = self._get_selected_result()
+        if not result:
+            return
+
+        reports_dir = self._get_reports_dir()
+        if not reports_dir:
+            QMessageBox.warning(
+                self, "Reports Directory Not Set",
+                "Please set the reports directory at the top of this tab, "
+                "then try again."
+            )
+            return
+
+        matches = db_search.find_report_pdf(
+            reports_dir,
+            result["first_name"],
+            result["last_name"],
+            result["mrn"],
+            result["collection_date"],
+        )
+
+        if not matches:
+            QMessageBox.information(
+                self, "Report Not Found",
+                f"No PDF report found for {result['patient_name']} "
+                f"(MRN: {result['mrn']}, Date: {result['collection_date']}).\n\n"
+                f"The file may have been moved, deleted, or not yet generated.\n"
+                f"Searched in: {reports_dir}"
+            )
+            return
+
+        if len(matches) == 1:
+            filepath = matches[0]
+        else:
+            # Multiple matches - let user choose
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Multiple Reports Found")
+            dialog.setMinimumWidth(500)
+            dlayout = QVBoxLayout(dialog)
+            dlayout.addWidget(QLabel("Multiple matching reports found. Select one to open:"))
+            file_list = QListWidget()
+            for m in matches:
+                file_list.addItem(m)
+            file_list.setCurrentRow(0)
+            dlayout.addWidget(file_list)
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            dlayout.addWidget(buttons)
+            if dialog.exec() != QDialog.Accepted:
+                return
+            filepath = matches[file_list.currentRow()]
+
+        err = db_search.open_file(filepath)
+        if err:
+            QMessageBox.warning(self, "Error", err)
+
+    def _open_billing_file(self):
+        result = self._get_selected_result()
+        if not result:
+            return
+
+        reports_dir = self._get_reports_dir()
+        if not reports_dir:
+            QMessageBox.warning(
+                self, "Reports Directory Not Set",
+                "Please set the reports directory at the top of this tab."
+            )
+            return
+
+        matches = db_search.find_billing_files(
+            reports_dir, result["mrn"], result["collection_date"]
+        )
+
+        if not matches:
+            QMessageBox.information(
+                self, "Billing File Not Found",
+                f"No billing file found containing MRN {result['mrn']}.\n\n"
+                f"Searched in: {reports_dir}"
+            )
+            return
+
+        filepath = matches[0]
+        if len(matches) > 1:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Multiple Billing Files Found")
+            dialog.setMinimumWidth(500)
+            dlayout = QVBoxLayout(dialog)
+            dlayout.addWidget(QLabel("Multiple matching billing files found. Select one:"))
+            file_list = QListWidget()
+            for m in matches:
+                file_list.addItem(m)
+            file_list.setCurrentRow(0)
+            dlayout.addWidget(file_list)
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(dialog.accept)
+            buttons.rejected.connect(dialog.reject)
+            dlayout.addWidget(buttons)
+            if dialog.exec() != QDialog.Accepted:
+                return
+            filepath = matches[file_list.currentRow()]
+
+        err = db_search.open_file(filepath)
+        if err:
+            QMessageBox.warning(self, "Error", err)
+
+    def _open_containing_folder(self):
+        result = self._get_selected_result()
+        if not result:
+            return
+
+        reports_dir = self._get_reports_dir()
+        if not reports_dir:
+            QMessageBox.warning(
+                self, "Reports Directory Not Set",
+                "Please set the reports directory at the top of this tab."
+            )
+            return
+
+        # Try to find the PDF first, then open its parent folder
+        matches = db_search.find_report_pdf(
+            reports_dir,
+            result["first_name"],
+            result["last_name"],
+            result["mrn"],
+            result["collection_date"],
+        )
+
+        if matches:
+            folder = os.path.dirname(matches[0])
+        else:
+            # Fall back to reports root
+            folder = reports_dir
+
+        from .utils import open_file_explorer
+        err = open_file_explorer(folder)
+        if err:
+            QMessageBox.warning(self, "Error", err)
+
+    # ── Persistence ─────────────────────────────────────────────
+
+    def save_reports_dir(self):
+        """Save the reports directory to config (called by MainWindow on close)."""
+        d = self.reports_dir_input.text().strip()
+        if d:
+            self.config_manager.set("search_reports_directory", d)
+
+
 class MainWindow(QMainWindow):
     """Main application window."""
     def __init__(self):
@@ -562,6 +1246,10 @@ class MainWindow(QMainWindow):
         # Google Drive settings tab
         self.gdrive_widget = GoogleDriveSettingsWidget()
         self.tab_widget.addTab(self.gdrive_widget, "☁️ Google Drive Settings")
+
+        # Search tab
+        self.search_widget = DatabaseSearchWidget(self.config_manager)
+        self.tab_widget.addTab(self.search_widget, "🔍 Search Database")
 
         # Load settings into widgets
         self.apply_settings_to_widgets()
@@ -768,6 +1456,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Save settings when window is closed."""
+        self.search_widget.save_reports_dir()
         self.save_settings()
         super().closeEvent(event)
 

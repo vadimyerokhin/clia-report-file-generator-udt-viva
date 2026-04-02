@@ -43,7 +43,9 @@ class ConfigManager:
         "gdrive_enabled": False,
         "gdrive_service_account_file": "",
         "gdrive_folder_id": "",
-        "gdrive_share_emails": []
+        "gdrive_share_emails": [],
+        # Search settings
+        "search_reports_directory": ""
     }
 
     def __init__(self, app_name: str = "clia-report-generator"):
