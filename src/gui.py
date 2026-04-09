@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QFont, QColor
 
-from .main import generate_reports, generate_positives_summary_pdf, run_post_generation_actions
+from .main import generate_reports, generate_positives_summary_pdf, run_post_generation_actions, create_zip_archive
 from .run_summary import RunSummary
 from .config import POSITIVES_SUMMARY_FILENAME
 from .utils import open_file_explorer, validate_output_directory
@@ -158,6 +158,13 @@ class Worker(QObject):
             if self.config.get('email_enabled') or self.config.get('gdrive_enabled'):
                 self.progress.emit("\n" + "="*40 + "\n📤 Post-Generation Actions\n" + "="*40)
                 run_post_generation_actions(self.output_dir, self.config, progress_callback)
+
+            # Create ZIP archive if enabled (runs independently of email/gdrive)
+            if self.config.get('create_zip') and self.summary.pdfs_generated > 0:
+                self.progress.emit("\n" + "="*40 + "\n🗜️  ZIP Archive\n" + "="*40)
+                create_zip_archive(
+                    self.input_file, self.output_dir, self.config, progress_callback
+                )
 
             # Store results to lab database (always runs, failures are non-blocking)
             self.progress.emit("\n" + "="*40 + "\n💾 Database Storage\n" + "="*40)
@@ -1313,12 +1320,25 @@ class MainWindow(QMainWindow):
 
         # Post-generation info
         post_gen_group = QGroupBox("📤 Post-Generation Actions (Configure in other tabs)")
-        post_gen_layout = QHBoxLayout()
+        post_gen_layout = QVBoxLayout()
+
+        status_row = QHBoxLayout()
         self.email_status_label = QLabel("📧 Email: Disabled")
         self.gdrive_status_label = QLabel("☁️ Google Drive: Disabled")
-        post_gen_layout.addWidget(self.email_status_label)
-        post_gen_layout.addWidget(self.gdrive_status_label)
-        post_gen_layout.addStretch()
+        status_row.addWidget(self.email_status_label)
+        status_row.addWidget(self.gdrive_status_label)
+        status_row.addStretch()
+        post_gen_layout.addLayout(status_row)
+
+        self.create_zip_checkbox = QCheckBox("Create ZIP archive of patient reports (placed beside input CSV)")
+        self.create_zip_checkbox.setChecked(True)
+        self.create_zip_checkbox.setToolTip(
+            "Creates a timestamped reports_YYYYMMDD_HHMMSS.zip in the same folder as the input CSV.\n"
+            "Includes all patient PDFs (preserving organization structure).\n"
+            "Excludes: positives_summary.pdf, billing CSV, and the original import CSV."
+        )
+        post_gen_layout.addWidget(self.create_zip_checkbox)
+
         post_gen_group.setLayout(post_gen_layout)
         layout.addWidget(post_gen_group)
 
@@ -1391,6 +1411,9 @@ class MainWindow(QMainWindow):
         # Apply Google Drive settings
         self.gdrive_widget.set_config(self.settings)
 
+        # Apply ZIP setting
+        self.create_zip_checkbox.setChecked(self.settings.get('create_zip', True))
+
         # Update status labels
         self.update_post_gen_status()
 
@@ -1422,6 +1445,9 @@ class MainWindow(QMainWindow):
 
         # Get Google Drive settings
         self.settings.update(self.gdrive_widget.get_config())
+
+        # Get ZIP setting
+        self.settings['create_zip'] = self.create_zip_checkbox.isChecked()
 
         # Save to file
         self.config_manager.save_config(self.settings)
@@ -1501,6 +1527,7 @@ class MainWindow(QMainWindow):
         config = {}
         config.update(self.email_widget.get_config())
         config.update(self.gdrive_widget.get_config())
+        config['create_zip'] = self.create_zip_checkbox.isChecked()
         return config
 
     @Slot()

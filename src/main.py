@@ -6,6 +6,8 @@ drives the workflow from data input to report output.
 """
 import os
 import argparse
+import zipfile
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Callable, List, Dict, Any
 import pandas as pd
@@ -344,6 +346,68 @@ def upload_to_google_drive(
             progress_callback(f"Google Drive upload had issues: {message}")
 
     return success
+
+
+def create_zip_archive(
+    input_file: str,
+    output_dir: str,
+    config: Dict[str, Any],
+    progress_callback: Optional[Callable[[str], None]] = None
+) -> Optional[str]:
+    """Create a timestamped ZIP archive of generated patient PDF reports.
+
+    The archive is placed in the same directory as the input CSV file.
+    Preserves any subdirectory structure within output_dir (e.g. by date/MRN).
+    Excludes positives_summary.pdf and billing CSV files.
+
+    Args:
+        input_file: Path to the input CSV file (determines zip destination).
+        output_dir: Directory containing generated reports to archive.
+        config: Configuration dictionary; must have 'create_zip' == True to proceed.
+        progress_callback: Optional callback for progress updates.
+
+    Returns:
+        Absolute path to the created zip file, or None if skipped or failed.
+    """
+    if not config.get('create_zip'):
+        return None
+
+    if not input_file or not os.path.exists(input_file):
+        if progress_callback:
+            progress_callback("Cannot create ZIP: input file path is invalid.")
+        return None
+
+    files = get_generated_files(output_dir)
+    patient_pdfs = [
+        p for p in files['pdf_files']
+        if os.path.basename(p) != POSITIVES_SUMMARY_FILENAME
+    ]
+
+    if not patient_pdfs:
+        if progress_callback:
+            progress_callback("No patient PDFs to archive; skipping ZIP creation.")
+        return None
+
+    zip_filename = datetime.now().strftime("reports_%Y%m%d_%H%M%S.zip")
+    zip_dir = os.path.dirname(os.path.abspath(input_file))
+    zip_path = os.path.join(zip_dir, zip_filename)
+
+    try:
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+            for pdf_path in patient_pdfs:
+                arcname = os.path.relpath(pdf_path, output_dir)
+                zf.write(pdf_path, arcname=arcname)
+
+        if progress_callback:
+            progress_callback(
+                f"ZIP archive created ({len(patient_pdfs)} report(s)): {zip_path}"
+            )
+        return zip_path
+
+    except (OSError, PermissionError) as e:
+        if progress_callback:
+            progress_callback(f"Failed to create ZIP archive: {e}")
+        return None
 
 
 def run_post_generation_actions(

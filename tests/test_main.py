@@ -4,11 +4,13 @@ import sys
 import shutil
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch, MagicMock, ANY
 
-from src.main import main, generate_reports, cli_conflict_handler
+from src.main import main, generate_reports, cli_conflict_handler, create_zip_archive
 from src.run_summary import RunSummary
 from src.exporter import PdfExporter
+from src.config import POSITIVES_SUMMARY_FILENAME
 
 
 class TestMain(unittest.TestCase):
@@ -272,6 +274,139 @@ class TestPdfGeneration(unittest.TestCase):
         # May or may not have positives depending on test data
         # Just verify no error occurred
         self.assertTrue(True)
+
+
+class TestCreateZipArchive(unittest.TestCase):
+    """Test suite for create_zip_archive function."""
+
+    def setUp(self):
+        """Set up temp directories with stub PDF files."""
+        self.output_dir = tempfile.mkdtemp()
+        self.input_dir = tempfile.mkdtemp()
+        self.input_file = os.path.join(self.input_dir, "export.csv")
+        # Create a dummy input CSV so dirname resolves correctly
+        with open(self.input_file, 'w') as f:
+            f.write("dummy")
+
+    def tearDown(self):
+        """Clean up temp directories."""
+        shutil.rmtree(self.output_dir, ignore_errors=True)
+        shutil.rmtree(self.input_dir, ignore_errors=True)
+
+    def _create_stub_pdf(self, relative_path):
+        """Create a stub PDF file in output_dir at the given relative path."""
+        full_path = os.path.join(self.output_dir, relative_path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, 'wb') as f:
+            f.write(b'%PDF-stub')
+        return full_path
+
+    def test_creates_zip_with_patient_pdfs(self):
+        """Test that zip is created with the correct patient PDFs."""
+        self._create_stub_pdf("John-Doe_123_2024-03-15.pdf")
+        self._create_stub_pdf("Jane-Smith_456_2024-03-15.pdf")
+
+        config = {'create_zip': True}
+        result = create_zip_archive(self.input_file, self.output_dir, config)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(os.path.exists(result))
+        self.assertTrue(result.startswith(self.input_dir))
+        self.assertTrue(result.endswith('.zip'))
+
+        with zipfile.ZipFile(result, 'r') as zf:
+            names = zf.namelist()
+            self.assertEqual(len(names), 2)
+            self.assertIn("John-Doe_123_2024-03-15.pdf", names)
+            self.assertIn("Jane-Smith_456_2024-03-15.pdf", names)
+
+    def test_excludes_positives_summary(self):
+        """Test that positives_summary.pdf is excluded from the zip."""
+        self._create_stub_pdf("John-Doe_123_2024-03-15.pdf")
+        self._create_stub_pdf(POSITIVES_SUMMARY_FILENAME)
+
+        config = {'create_zip': True}
+        result = create_zip_archive(self.input_file, self.output_dir, config)
+
+        self.assertIsNotNone(result)
+        with zipfile.ZipFile(result, 'r') as zf:
+            names = zf.namelist()
+            self.assertEqual(len(names), 1)
+            self.assertNotIn(POSITIVES_SUMMARY_FILENAME, names)
+
+    def test_preserves_subdirectory_structure(self):
+        """Test that subdirectory organization is preserved in the zip."""
+        self._create_stub_pdf("2024-03-15/John-Doe_123_2024-03-15.pdf")
+        self._create_stub_pdf("2024-03-16/Jane-Smith_456_2024-03-16.pdf")
+
+        config = {'create_zip': True}
+        result = create_zip_archive(self.input_file, self.output_dir, config)
+
+        self.assertIsNotNone(result)
+        with zipfile.ZipFile(result, 'r') as zf:
+            names = zf.namelist()
+            self.assertEqual(len(names), 2)
+            # Check subdirectory paths are preserved
+            self.assertTrue(any("2024-03-15" in n for n in names))
+            self.assertTrue(any("2024-03-16" in n for n in names))
+
+    def test_returns_none_when_disabled(self):
+        """Test that zip is not created when feature is disabled."""
+        self._create_stub_pdf("John-Doe_123_2024-03-15.pdf")
+
+        config = {'create_zip': False}
+        result = create_zip_archive(self.input_file, self.output_dir, config)
+
+        self.assertIsNone(result)
+        # No zip files should exist in the input directory
+        zip_files = [f for f in os.listdir(self.input_dir) if f.endswith('.zip')]
+        self.assertEqual(len(zip_files), 0)
+
+    def test_returns_none_when_no_pdfs(self):
+        """Test that zip is skipped when there are no patient PDFs."""
+        config = {'create_zip': True}
+        messages = []
+        result = create_zip_archive(
+            self.input_file, self.output_dir, config,
+            progress_callback=messages.append
+        )
+
+        self.assertIsNone(result)
+        self.assertTrue(any("skipping" in m.lower() for m in messages))
+
+    def test_returns_none_when_only_positives_summary(self):
+        """Test that zip is skipped when only positives_summary.pdf exists."""
+        self._create_stub_pdf(POSITIVES_SUMMARY_FILENAME)
+
+        config = {'create_zip': True}
+        result = create_zip_archive(self.input_file, self.output_dir, config)
+
+        self.assertIsNone(result)
+
+    def test_zip_placed_beside_input_csv(self):
+        """Test that the zip file is created in the same directory as the input CSV."""
+        self._create_stub_pdf("report.pdf")
+
+        config = {'create_zip': True}
+        result = create_zip_archive(self.input_file, self.output_dir, config)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(os.path.dirname(result), self.input_dir)
+
+    def test_progress_callback_on_success(self):
+        """Test that progress callback is called with success message."""
+        self._create_stub_pdf("report.pdf")
+
+        config = {'create_zip': True}
+        messages = []
+        result = create_zip_archive(
+            self.input_file, self.output_dir, config,
+            progress_callback=messages.append
+        )
+
+        self.assertIsNotNone(result)
+        self.assertTrue(any("ZIP archive created" in m for m in messages))
+        self.assertTrue(any("1 report(s)" in m for m in messages))
 
 
 if __name__ == '__main__':

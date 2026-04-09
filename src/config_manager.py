@@ -44,6 +44,8 @@ class ConfigManager:
         "gdrive_service_account_file": "",
         "gdrive_folder_id": "",
         "gdrive_share_emails": [],
+        # ZIP archive settings
+        "create_zip": True,
         # Search settings
         "search_reports_directory": ""
     }
@@ -311,6 +313,10 @@ class ConfigManager:
                 config["email_smtp_port"] = 587
         if not isinstance(config.get("email_use_tls"), bool):
             config["email_use_tls"] = True
+
+        # Validate ZIP settings
+        if not isinstance(config.get("create_zip"), bool):
+            config["create_zip"] = True
 
         # Validate Google Drive settings
         if not isinstance(config.get("gdrive_enabled"), bool):
